@@ -281,7 +281,8 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 	send_kvdata.SetValue(KEY_Protocol, (int)GetAllRoomRsp);
 	send_kvdata.SetValue(KEY_RoomNum, (int)m_RoomInfoMap.size());
 
-	uint32_t header_size = m_ProtocolFactory->HeaderSize();
+	IProtocolFactory *protocol_factory = GetProtocolFactory();
+	uint32_t header_size = protocol_factory->HeaderSize();
 	uint32_t body_size = send_kvdata.Size();
 	send_context->CheckSize(header_size+body_size);
 	send_kvdata.Serialize(send_context->Buffer+header_size);
@@ -313,7 +314,7 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 	}
 
 	//编译头部
-	m_ProtocolFactory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
 	if(SendProtocol(fd, send_context) == false)
 	{
 		LOG_ERROR(logger, "send GetAllRoomRsp to framework failed.fd="<<fd);
@@ -376,14 +377,15 @@ bool GameInterface::OnGetRoomAddr(int fd, KVData *kvdata)
 	send_context->type = DTYPE_BIN;
 	send_context->Info = "GetRoomAddrRsp";
 
-	uint32_t header_size = m_ProtocolFactory->HeaderSize();
+	IProtocolFactory *protocol_factory = GetProtocolFactory();
+	uint32_t header_size = protocol_factory->HeaderSize();
 	uint32_t body_size = send_kvdata.Size();
 	send_context->CheckSize(header_size+body_size);
 	send_kvdata.Serialize(send_context->Buffer+header_size);
 	send_context->Size = header_size+body_size;
 
 	//编译头部
-	m_ProtocolFactory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
 	if(SendProtocol(fd, send_context) == false)
 	{
 		LOG_ERROR(logger, "send GetRoomAddrRsp to framework failed.fd="<<fd);

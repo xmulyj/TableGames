@@ -9,6 +9,7 @@
 #define _GAMEROOM_H_
 
 #include "IAppInterface.h"
+#include "KVData.h"
 using namespace easynet;
 
 #include <TractorTable.h>
@@ -72,6 +73,12 @@ private:  //IEventHandler接口方法
 	ERROR_CODE OnEventRead(int32_t fd, uint64_t nowtime_ms){return ECODE_SUCC;}
 	//可写事件
 	ERROR_CODE OnEventWrite(int32_t fd, uint64_t nowtime_ms){return ECODE_SUCC;}
+private:
+	bool OnIntoRoom(int fd, KVData *kvdata);
+	bool OnOutRoom(int fd, KVData *kvdata);
+	bool OnGetRoomInfo(int fd, KVData *kvdata);
+	bool OnIntoTable(int fd, KVData *kvdata);
+	bool OnOutTable(int fd, KVData *kvdata);
 private:
 	string m_IP;
 	int    m_Port;

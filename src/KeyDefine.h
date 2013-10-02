@@ -19,8 +19,10 @@
 #define IntoRoomRsp         6
 #define OutRoom             7
 #define GetRoomInfo         8
-#define IntoTable           9
-#define OutTable            10
+#define GetRoomInfoRsp      9
+#define IntoTable           10
+#define IntoTableRsp        11
+#define OutTable            12
 
 
 //KeyName Define
@@ -31,12 +33,13 @@
 #define KEY_RoomPort        3
 #define KEY_ClientNum       4
 #define KEY_TableNum        5
-#define KEY_NumArray        6
-#define KEY_ClientID        7
-#define KEY_ClientName      8
-#define KEY_RoomNum         9
-#define KEY_WelcomeMsg      10
-#define KEY_Status          11
+#define KEY_TableID         6
+#define KEY_NumArray        7
+#define KEY_ClientID        8
+#define KEY_ClientName      9
+#define KEY_RoomNum         10
+#define KEY_WelcomeMsg      11
+#define KEY_Status          12
 
 
 #endif /* KEYDEFINE_H_ */
