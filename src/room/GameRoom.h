@@ -61,6 +61,24 @@ public:
 	//socket需要结束时调用本接口
 	//  @param fd             : 需要结束的socket
 	void OnSocketFinished(int32_t fd);
+private:  //IEventHandler接口方法
+	//时钟超时
+	void OnTimeout(uint64_t nowtime_ms);
+	//错误事件
+	void OnEventError(int32_t fd, uint64_t nowtime_ms, ERROR_CODE code){}
+	//可读事件
+	ERROR_CODE OnEventRead(int32_t fd, uint64_t nowtime_ms){return ECODE_SUCC;}
+	//可写事件
+	ERROR_CODE OnEventWrite(int32_t fd, uint64_t nowtime_ms){return ECODE_SUCC;}
+private:
+	string m_IP;
+	int    m_Port;
+	int    m_ID;
+	int    m_TableNum;
+
+	string m_InterfaceIP;
+	int    m_InterfacePort;
+	int    m_InterfaceFD;
 private:
 	DECL_LOGGER(logger);
 };
