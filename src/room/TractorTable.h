@@ -11,6 +11,7 @@
 #include <list>
 using std::list;
 
+#include "Player.h"
 #include "Poker.h"
 
 //拖拉机(80分)

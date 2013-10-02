@@ -11,13 +11,15 @@
 #include "IAppInterface.h"
 using namespace easynet;
 
+#include <TractorTable.h>
+
 //默认使用以下组件实例:
 //    EventServer     : EventServerEpoll
 //    ProtocolFactory : KVDataProtocolFactory
 //    TransHandler    : TransHandler
 //    ListenHandler   : ListenHandler
 //    IMemory         : SystemMemory
-class GameRoom:public IAppInterface
+class GameRoom:public IAppInterface, public IEventHandler
 {
 //////////////////////////////////////////////////////////////////
 //////////////////////////   接口方法   //////////////////////////
@@ -75,6 +77,9 @@ private:
 	int    m_Port;
 	int    m_ID;
 	int    m_TableNum;
+	int    m_PackNum;
+	vector<TractorTable> m_Tables;
+	int    m_ClientNum;  //房间中总人数(玩家+游客)
 
 	string m_InterfaceIP;
 	int    m_InterfacePort;

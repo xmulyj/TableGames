@@ -7,6 +7,7 @@
 
 #include "TractorTable.h"
 #include <assert.h>
+#include <stddef.h>
 
 TractorTable::TractorTable(int n_poker/*=1*/, int n_player/*=4*/):m_Poker(n_poker), m_PlayerNum(n_player)
 {

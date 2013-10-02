@@ -92,6 +92,9 @@ bool GameInterface::OnReceiveProtocol(int32_t fd, ProtocolContext *context, bool
 	case GetAllRoom:
 		return OnGetAllRoom(fd, kvdata);
 		break;
+	case GetRoomAddr:
+		return OnGetRoomAddr(fd, kvdata);
+		break;
 	default:
 		LOG_ERROR(logger, "unknow protocol type="<<protocol<<". fd="<<fd);
 		return false;
@@ -286,7 +289,7 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 
 	if(m_RoomInfoMap.size() > 0)
 	{
-		int buf_size = sizeof(int)*2*m_RoomInfoMap.size());
+		int buf_size = sizeof(int)*2*m_RoomInfoMap.size();
 		send_context->CheckSize(KVData::SizeBytes(buf_size);
 
 		char *data_buffer = send_context->Buffer+send_context->Size;
@@ -318,5 +321,75 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 		return false;
 	}
 	LOG_DEBUG(logger, "send GetAllRoomRsp to framework succ.fd="<<fd);
+	return true;
+}
+
+bool GameInterface::OnGetRoomAddr(int fd, KVData *kvdata)
+{
+	int      RoomID;
+	uint32_t ClientID;
+	string   ClientName;
+	if(!kvdata->GetValue(KEY_RoomID, RoomID))
+	{
+		LOG_ERROR(logger, "OnGetRoomAddr: get RoomID failed. fd="<<fd);
+		return false;
+	}
+	if(!kvdata->GetValue(KEY_ClientID, ClientID))
+	{
+		LOG_ERROR(logger, "OnGetRoomAddr: get ClientID failed. fd="<<fd);
+		return false;
+	}
+	if(!kvdata->GetValue(KEY_ClientName, ClientName))
+	{
+		LOG_ERROR(logger, "OnGetRoomAddr: get ClientName failed. fd="<<fd);
+		return false;
+	}
+
+
+	KVData send_kvdata(true);
+	send_kvdata.SetValue(KEY_Protocol, (int)GetRoomAddrRsp);
+	send_kvdata.SetValue(KEY_RoomID, RoomID);
+
+	RoomInfoMap::iterator it = m_RoomInfoMap.find(RoomID);
+	if(it != m_RoomInfoMap.end())
+	{
+		send_kvdata.SetValue(KEY_RoomIP, it->second.RoomIP);
+		send_kvdata.SetValue(KEY_RoomPort, it->second.RoomPort);
+		LOG_DEBUG(logger, "OnGetRoomAddr: RoomID="<<RoomID
+					<<",ClientID="<<ClientID
+					<<",ClientName="<<ClientName
+					<<",RoomIP="<<it->second.RoomIP
+					<<",RoomPort="<<it->second.RoomPort
+					<<",fd="<<fd);
+	}
+	else
+	{
+		LOG_ERROR(logger, "OnGetRoomAddr: not find room. RoomID="<<RoomID
+					<<",ClientID="<<ClientID
+					<<",ClientName="<<ClientName
+					<<",fd="<<fd);
+	}
+
+	ProtocolContext *send_context = NULL;
+	send_context = NewProtocolContext();
+	assert(send_context != NULL);
+	send_context->type = DTYPE_BIN;
+	send_context->Info = "GetRoomAddrRsp";
+
+	uint32_t header_size = m_ProtocolFactory->HeaderSize();
+	uint32_t body_size = send_kvdata.Size();
+	send_context->CheckSize(header_size+body_size);
+	send_kvdata.Serialize(send_context->Buffer+header_size);
+	send_context->Size = header_size+body_size;
+
+	//编译头部
+	m_ProtocolFactory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+	if(SendProtocol(fd, send_context) == false)
+	{
+		LOG_ERROR(logger, "send GetRoomAddrRsp to framework failed.fd="<<fd);
+		DeleteProtocolContext(send_context);
+		return false;
+	}
+	LOG_DEBUG(logger, "send GetRoomAddrRsp to framework succ.fd="<<fd);
 	return true;
 }
