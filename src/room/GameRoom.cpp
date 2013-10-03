@@ -7,6 +7,7 @@
 
 #include "GameRoom.h"
 #include <assert.h>
+#include <netinet/in.h>
 
 #include "../KeyDefine.h"
 
@@ -14,6 +15,7 @@
 static ConfigReader gConfigReader;
 
 IMPL_LOGGER(GameRoom, logger);
+
 
 bool GameRoom::Start()
 {
@@ -34,6 +36,8 @@ bool GameRoom::Start()
 	m_PackNum = gConfigReader.GetValue("PackNum", -1);
 	assert(m_PackNum > 0);
 	m_ClientNum = 0;
+
+	m_PlayerNum = 4;
 
 	for(int i=0; i<m_TableNum; ++i)
 	{
@@ -100,14 +104,14 @@ bool GameRoom::OnReceiveProtocol(int32_t fd, ProtocolContext *context, bool &det
 	case GetRoomInfo:
 		return OnGetRoomInfo(fd, kvdata);
 		break;
-	case IntoTable:
-		return OnIntoTable(fd, kvdata);
+	case AddGame:
+		return OnAddGame(fd, kvdata);
 		break;
-	case OutTable:
-		return OnOutTable(fd, kvdata);
+	case QuitGame:
+		return OnQuitGame(fd, kvdata);
 		break;
-	case IntoRoom:
-		return OnIntoRoom(fd, kvdata);
+	case StartGame:
+		return OnStartGame(fd, kvdata);
 		break;
 	default:
 		LOG_ERROR(logger, "unknow protocol type="<<protocol<<". fd="<<fd);
@@ -199,7 +203,7 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
+		num_array[i] = htonl(m_Tables[i].CurPlayerNum);
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
@@ -272,7 +276,7 @@ bool GameRoom::OnIntoRoom(int fd, KVData *kvdata)
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
+		num_array[i] = htonl(m_Tables[i].CurPlayerNum);
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
@@ -378,22 +382,22 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
+		num_array[i] = htonl(m_Tables[i].CurPlayerNum);
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
 	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
 	if(SendProtocol(fd, send_context) == false)
 	{
-		LOG_ERROR(logger, "send GetRoomInfoRsp to framework failed.fd="<<fd);
+		LOG_ERROR(logger, "OnGetRoomInfo: send GetRoomInfoRsp to framework failed.fd="<<fd);
 		DeleteProtocolContext(send_context);
 		return false;
 	}
-	LOG_DEBUG(logger, "send IntoRoomRsp to framework succ.cur ClientNum="<<m_ClientNum<<",fd="<<fd);
+	LOG_DEBUG(logger, "OnGetRoomInfo: send IntoRoomRsp to framework succ.cur ClientNum="<<m_ClientNum<<",fd="<<fd);
 	return true;
 }
 
-bool GameRoom::OnIntoTable(int fd, KVData *kvdata)
+bool GameRoom::OnAddGame(int fd, KVData *kvdata)
 {
 	int RoomID;
 	int TableID;
@@ -402,50 +406,83 @@ bool GameRoom::OnIntoTable(int fd, KVData *kvdata)
 
 	if(!kvdata->GetValue(KEY_RoomID, RoomID))
 	{
-		LOG_ERROR(logger, "OnIntoTable: get RoomID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnAddGame: get RoomID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_TableID, TableID))
 	{
-		LOG_ERROR(logger, "OnIntoTable: get TableID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnAddGame: get TableID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_ClientID, ClientID))
 	{
-		LOG_ERROR(logger, "OnIntoTable: get ClientID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnAddGame: get ClientID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_ClientName, ClientName))
 	{
-		LOG_ERROR(logger, "OnIntoTable: get ClientName failed. fd="<<fd);
+		LOG_ERROR(logger, "OnAddGame: get ClientName failed. fd="<<fd);
 		return false;
 	}
 
 	if(RoomID!=m_ID || TableID<0 || TableID>=m_TableNum)
 	{
-		LOG_ERROR(logger, "OnIntoTable: RoomID or TableID invalid. recv RoomID="<<RoomID
+		LOG_ERROR(logger, "OnAddGame: RoomID or TableID invalid. recv RoomID="<<RoomID
 				<<",recv TableID="<<TableID
 				<<",my RoomID="<<m_ID
 				<<",fd="<<fd);
 		return false;
 	}
 
-	LOG_DEBUG(logger, "OnIntoTable: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Into Table="<<TableID<<".fd="<<fd);
+	LOG_DEBUG(logger, "OnAddGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Into Table="<<TableID<<".fd="<<fd);
 
-	//TODO:Add a new player
-	bool is_palyer = m_Tables[TableID].AddPlayer(NULL);
+	//add a new player
+	PlayerMap::iterator it = m_PlayerMap.find(ClientID);
+	if(it == m_PlayerMap.end())  //new player
+	{
+		Player temp_player;
+		temp_player.client_id = ClientID;
+		temp_player.index = -1;
+		temp_player.table_id = TableID;
+		temp_player.status = STATUS_INVALID;
+
+		std::pair<PlayerMap::iterator, bool> ret = m_PlayerMap.insert(std::make_pair(ClientID, temp_player));
+		assert(ret.second == true);
+		it = ret.first;
+	}
+	Player *player = &it->second;
+	assert(player->table_id == TableID);
+	TractorTable &table = m_Tables[TableID];
+
+	if(table.CurPlayerNum < m_PlayerNum)  //人数未满,成为玩家
+	{
+		player->status = STATUS_WAIT;
+		player->index = table.GetPlayerIndex();
+		assert(player->index != -1);
+		table.IndexPlayer[player->index] = player;
+		++table.CurPlayerNum;
+
+		//如果之前是旁观者,则删除
+		table.Audience.erase(ClientID);
+	}
+	else  //成为旁观者
+	{
+		player->status = STATUS_AUDIENCE;
+		player->index = -1;
+		table.Audience.insert(std::make_pair(ClientID, player));
+	}
 
 	ProtocolContext *send_context = NULL;
 	send_context = NewProtocolContext();
 	assert(send_context != NULL);
 	send_context->type = DTYPE_BIN;
-	send_context->Info = "IntoTableRsp";
+	send_context->Info = "AddGameRsp";
 
 	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)IntoTableRsp);
+	send_kvdata.SetValue(KEY_Protocol, (int)AddGameRsp);
 	string WelcomeMsg="Welcome "+ClientName;
 	send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
-	send_kvdata.SetValue(KEY_Status, is_palyer?1:-1);
+	send_kvdata.SetValue(KEY_Status, (int)player->status);
 
 	IProtocolFactory *protocol_factory = GetProtocolFactory();
 	uint32_t header_size = protocol_factory->HeaderSize();
@@ -458,16 +495,16 @@ bool GameRoom::OnIntoTable(int fd, KVData *kvdata)
 	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
 	if(SendProtocol(fd, send_context) == false)
 	{
-		LOG_ERROR(logger, "send IntoTableRsp to framework failed.fd="<<fd);
+		LOG_ERROR(logger, "OnAddGame: send IntoTableRsp to framework failed.fd="<<fd);
 		DeleteProtocolContext(send_context);
 		return false;
 	}
 
-	LOG_DEBUG(logger, "send IntoTableRsp to framework succ.ClientName="<<ClientName<<",ClientID="<<ClientID<<",fd="<<fd);
+	LOG_DEBUG(logger, "OnAddGame: end AddGameRsp to framework succ.ClientName="<<ClientName<<",ClientID="<<ClientID<<",fd="<<fd);
 	return true;
 }
 
-bool GameRoom::OnOutTable(int fd, KVData *kvdata)
+bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
 {
 	int RoomID;
 	int TableID;
@@ -476,37 +513,106 @@ bool GameRoom::OnOutTable(int fd, KVData *kvdata)
 
 	if(!kvdata->GetValue(KEY_RoomID, RoomID))
 	{
-		LOG_ERROR(logger, "OnOutTable: get RoomID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnQuitGame: get RoomID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_TableID, TableID))
 	{
-		LOG_ERROR(logger, "OnOutTable: get TableID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnQuitGame: get TableID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_ClientID, ClientID))
 	{
-		LOG_ERROR(logger, "OnOutTable: get ClientID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnQuitGame: get ClientID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_ClientName, ClientName))
 	{
-		LOG_ERROR(logger, "OnOutTable: get ClientName failed. fd="<<fd);
+		LOG_ERROR(logger, "OnQuitGame: get ClientName failed. fd="<<fd);
 		return false;
 	}
 
 	if(RoomID!=m_ID || TableID<0 || TableID>=m_TableNum)
 	{
-		LOG_ERROR(logger, "OnOutTable: RoomID or TableID invalid. recv RoomID="<<RoomID
+		LOG_ERROR(logger, "OnQuitGame: RoomID or TableID invalid. recv RoomID="<<RoomID
 				<<",recv TableID="<<TableID
 				<<",my RoomID="<<m_ID
 				<<",fd="<<fd);
 		return false;
 	}
 
-	//TODO:删除玩家
-	m_Tables[TableID].DelPlayer(NULL);
-	LOG_DEBUG(logger, "OnOutTable: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Out Table="<<TableID<<".fd="<<fd);
+	LOG_DEBUG(logger, "OnQuitGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<",TableID="<<TableID<<".fd="<<fd);
+
+	PlayerMap::iterator it = m_PlayerMap.find(ClientID);
+	if(it != m_PlayerMap.end())
+	{
+		Player *player = it->second;
+		assert(player->table_id == TableID);
+		TractorTable &table = m_Tables[TableID];
+		if(player->status == STATUS_AUDIENCE)
+		{
+			table.Audience.erase(ClientID);
+			//TODO:其他玩家设置为STATUS_WAIT状态
+		}
+		else
+			table.IndexPlayer[player->index] = NULL;
+		m_PlayerMap.erase(it);
+	}
+	return true;
+}
+
+bool GameRoom::OnStartGame(int fd, KVData *kvdata)
+{
+	int RoomID;
+	int TableID;
+	int ClientID;
+	string ClientName;
+
+	if(!kvdata->GetValue(KEY_RoomID, RoomID))
+	{
+		LOG_ERROR(logger, "OnStartGame: get RoomID failed. fd="<<fd);
+		return false;
+	}
+	if(!kvdata->GetValue(KEY_TableID, TableID))
+	{
+		LOG_ERROR(logger, "OnStartGame: get TableID failed. fd="<<fd);
+		return false;
+	}
+	if(!kvdata->GetValue(KEY_ClientID, ClientID))
+	{
+		LOG_ERROR(logger, "OnStartGame: get ClientID failed. fd="<<fd);
+		return false;
+	}
+	if(!kvdata->GetValue(KEY_ClientName, ClientName))
+	{
+		LOG_ERROR(logger, "OnStartGame: get ClientName failed. fd="<<fd);
+		return false;
+	}
+
+	if(RoomID!=m_ID || TableID<0 || TableID>=m_TableNum)
+	{
+		LOG_ERROR(logger, "OnStartGame: RoomID or TableID invalid. recv RoomID="<<RoomID
+				<<",recv TableID="<<TableID
+				<<",my RoomID="<<m_ID
+				<<",fd="<<fd);
+		return false;
+	}
+
+	LOG_DEBUG(logger, "OnStartGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<",TableID="<<TableID<<".fd="<<fd);
+
+	PlayerMap::iterator it = m_PlayerMap.find(ClientID);
+	if(it != m_PlayerMap.end())
+	{
+		Player &player = it->second;
+		assert(player.table_id==TableID && player.status==STATUS_WAIT);
+		player.status = STATUS_PLAYING;
+
+		//TODO:判断所有的玩家是否都是PLAYING状态
+	}
+	else
+	{
+		LOG_ERROR(logger, "OnStartGame: not found ClientID="<<ClientID<<". fd="<<fd);
+	}
 
 	return true;
 }

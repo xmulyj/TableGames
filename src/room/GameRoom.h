@@ -77,14 +77,18 @@ private:
 	bool OnIntoRoom(int fd, KVData *kvdata);
 	bool OnOutRoom(int fd, KVData *kvdata);
 	bool OnGetRoomInfo(int fd, KVData *kvdata);
-	bool OnIntoTable(int fd, KVData *kvdata);
-	bool OnOutTable(int fd, KVData *kvdata);
+	bool OnAddGame(int fd, KVData *kvdata);
+	bool OnQuitGame(int fd, KVData *kvdata);
+	bool OnStartGame(int fd, KVData *kvdata);
 private:
 	string m_IP;
 	int    m_Port;
 	int    m_ID;
 	int    m_TableNum;
 	int    m_PackNum;
+	int    m_PlayerNum;  //一次几个玩家
+	PlayerMap m_PlayerMap;
+
 	vector<TractorTable> m_Tables;
 	int    m_ClientNum;  //房间中总人数(玩家+游客)
 

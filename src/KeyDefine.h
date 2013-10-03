@@ -20,10 +20,10 @@
 #define OutRoom             7
 #define GetRoomInfo         8
 #define GetRoomInfoRsp      9
-#define IntoTable           10
-#define IntoTableRsp        11
-#define OutTable            12
-
+#define AddGame             10
+#define AddGameRsp          11
+#define QuitGame            12
+#define StartGame           13
 
 //KeyName Define
 //////////////////////////////

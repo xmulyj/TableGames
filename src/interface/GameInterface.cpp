@@ -13,7 +13,7 @@
 
 #include <assert.h>
 #include <time.h>
-#include <arpa/inet.h>
+#include <netinet/in.h>
 
 static ConfigReader gConfigReader;
 
