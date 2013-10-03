@@ -13,6 +13,7 @@
 using std::map;
 
 #include "Poker.h"
+#include "TableTimer.h"
 
 typedef enum _status_
 {
@@ -45,6 +46,8 @@ public:
 	Player *IndexPlayer[10];
 	map<int, Player*> Audience;
 	int Dealer;         //庄家
+
+	TableTimer Timer;
 private:
 	int m_PlayerNum;
 	Poker m_Poker;

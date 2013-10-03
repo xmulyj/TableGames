@@ -41,7 +41,8 @@ bool GameRoom::Start()
 
 	for(int i=0; i<m_TableNum; ++i)
 	{
-		TractorTable table(m_PackNum);
+		TractorTable table(m_PackNum, m_PlayerNum);
+		table.Timer.Init(this, i);
 		m_Tables.push_back(table);
 	}
 
@@ -607,12 +608,40 @@ bool GameRoom::OnStartGame(int fd, KVData *kvdata)
 		assert(player.table_id==TableID && player.status==STATUS_WAIT);
 		player.status = STATUS_PLAYING;
 
-		//TODO:判断所有的玩家是否都是PLAYING状态
+		//判断所有的玩家是否都是PLAYING状态
+		int i;
+		for(i=0; i<m_PlayerNum; ++i)
+		{
+			if(m_Tables[TableID].IndexPlayer[i]==NULL
+				|| m_Tables[TableID].IndexPlayer[i]->status!=STATUS_PLAYING)
+				break;
+		}
+
+		//所有玩家都进入PLAYING状态
+		if(i >= m_PlayerNum)
+		{
+			//启动时钟开始发牌
+			IEventServer *event_server = GetEventServer();
+			IEventHandler *timer_handler = &m_Tables[TableID].Timer;
+			if(!event_server->AddTimer(timer_handler, 500, true))
+			{
+				LOG_ERROR(logger, "OnStartGame: all player are ready but add deal timer failed. TableID="<<TableID<<". fd="<<fd);
+				assert(0);
+			}
+			LOG_INFO(logger, "OnStartGame: all player are ready add deal timer succ. TableID="<<TableID<<". fd="<<fd);
+		}
 	}
 	else
 	{
 		LOG_ERROR(logger, "OnStartGame: not found ClientID="<<ClientID<<". fd="<<fd);
 	}
+
+	return true;
+}
+
+//为table_id的桌子发牌
+bool GameRoom::OnTableTimerTimeout(int table_id)
+{
 
 	return true;
 }
