@@ -15,5 +15,8 @@ void TableTimer::OnTimeout(uint64_t nowtime_ms)
 {
 	assert(m_App != NULL);
 	GameRoom *game_room = (GameRoom*)m_App;
-	game_room->OnTableTimerTimeout(m_TableID);
+	if(!game_room->OnTableTimerTimeout(m_TableID))
+	{
+		//TODO:完成时钟,将时钟移除
+	}
 }
