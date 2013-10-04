@@ -295,21 +295,15 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 
 		char *data_buffer = send_context->Buffer+send_context->Size;
 		KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
-		char *num_array = kv_buffer.second;
+		int *num_array = (int*)kv_buffer.second;
 
 		RoomInfoMap::iterator it;
 		for(it=m_RoomInfoMap.begin(); it!=m_RoomInfoMap.end(); ++it)
 		{
-			int value;
-			value = htonl(it->second.RoomID);
-			*num_array = value;
-			num_array += sizeof(value);
-
-			value = htonl(it->second.ClientNum);
-			*num_array = value;
-			num_array += sizeof(value);
+			*num_array++ = htonl(it->second.RoomID);
+			*num_array++ = htonl(it->second.ClientNum);
 		}
-		assert(num_array-kv_buffer.second == buf_size);
+		assert((char*)num_array-kv_buffer.second == buf_size);
 		send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 	}
 
