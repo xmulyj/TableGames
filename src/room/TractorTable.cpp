@@ -112,7 +112,7 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 		{
 			LOG_ERROR(logger, "OnAddGame: send DealPoker to framework failed. player="<<m_Player[i]->index<<".fd="<<m_Player[i]->fd);
 			m_GameRoom->DeleteProtocolContext(send_context);
-			return ;
+			assert(0);
 		}
 	}
 
