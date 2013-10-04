@@ -22,7 +22,7 @@ IMPL_LOGGER(GameInterface, logger);
 bool GameInterface::Start()
 {
 	//Add Your Code Here
-	if(!gConfigReader.Init("./config/server.conf"))
+	if(!gConfigReader.Init("../config/server.conf"))
 		assert(0);
 	string ip = gConfigReader.GetValue("ServerIP", "");
 	assert(ip.size() > 0);
@@ -291,7 +291,7 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 	if(m_RoomInfoMap.size() > 0)
 	{
 		int buf_size = sizeof(int)*2*m_RoomInfoMap.size();
-		send_context->CheckSize(KVData::SizeBytes(buf_size);
+		send_context->CheckSize(KVData::SizeBytes(buf_size));
 
 		char *data_buffer = send_context->Buffer+send_context->Size;
 		KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
