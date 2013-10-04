@@ -7,11 +7,12 @@
 
 #include "TractorTable.h"
 #include <assert.h>
+#include <netinet/in.h>
 
 #include "GameRoom.h"
-#include "KeyDefine.h"
+#include "../KeyDefine.h"
 
-IMPL_LOGGER(GameRoom, logger);
+IMPL_LOGGER(TractorTable, logger);
 
 #define DEAL_TIMEOUT  500    //每轮发牌时间(ms)
 

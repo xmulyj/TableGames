@@ -9,15 +9,20 @@
 #define TRACTORTABLE_H_
 
 #include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <vector>
+#include <string>
 using std::map;
 using std::vector;
+using std::string;
+
+#include "EventServer.h"
+using namespace easynet;
 
 #include "Logger.h"
 
 #include "Poker.h"
-#include "TableTimer.h"
 
 
 typedef enum _status_
@@ -68,13 +73,13 @@ private:
 	int GetPlayerIndex();  //获取玩家的index号
 private:
 	GameRoom*            m_GameRoom;       //游戏房间
-	const int            m_TableID;        //桌号
-	const int            m_PlayerNum;      //玩家个数
+	int                  m_TableID;        //桌号
+	int                  m_PlayerNum;      //玩家个数
 
 	Poker                m_Poker;          //扑克
 	int                  m_CurPlayerNum;   //当前玩家个数
 	Player*              m_Player[10];     //玩家
-	map<int, Player*>    m_Audience;       //旁观者
+	PPlayerMap           m_Audience;       //旁观者
 	int                  m_Dealer;         //庄家的号码
 	int                  m_KeepPokerNum;   //底牌张数
 private:

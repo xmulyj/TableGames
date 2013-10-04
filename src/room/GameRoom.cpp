@@ -11,7 +11,9 @@
 
 #include "../KeyDefine.h"
 
+#include "Socket.h"
 #include "ConfigReader.h"
+using namespace easynet;
 static ConfigReader gConfigReader;
 
 IMPL_LOGGER(GameRoom, logger);
@@ -198,7 +200,7 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 
 	//Set NumArray
 	int buf_size = sizeof(int)*m_TableNum;
-	send_context->CheckSize(KVData::SizeBytes(buf_size);
+	send_context->CheckSize(KVData::SizeBytes(buf_size));
 	char *data_buffer = send_context->Buffer+send_context->Size;
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
@@ -271,7 +273,7 @@ bool GameRoom::OnIntoRoom(int fd, KVData *kvdata)
 
 	//Set NumArray
 	int buf_size = sizeof(int)*m_TableNum;
-	send_context->CheckSize(KVData::SizeBytes(buf_size);
+	send_context->CheckSize(KVData::SizeBytes(buf_size));
 	char *data_buffer = send_context->Buffer+send_context->Size;
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
@@ -377,7 +379,7 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 
 	//Set NumArray
 	int buf_size = sizeof(int)*m_TableNum;
-	send_context->CheckSize(KVData::SizeBytes(buf_size);
+	send_context->CheckSize(KVData::SizeBytes(buf_size));
 	char *data_buffer = send_context->Buffer+send_context->Size;
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
