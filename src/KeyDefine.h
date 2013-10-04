@@ -24,6 +24,7 @@
 #define AddGameRsp          11
 #define QuitGame            12
 #define StartGame           13
+#define DealPoker           14
 
 //KeyName Define
 //////////////////////////////

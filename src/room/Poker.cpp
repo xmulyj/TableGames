@@ -48,3 +48,7 @@ int Poker::Deal()
 	return poker;
 }
 
+int Poker::Remain()
+{
+	return m_Poker.size();
+}

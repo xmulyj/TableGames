@@ -41,8 +41,7 @@ bool GameRoom::Start()
 
 	for(int i=0; i<m_TableNum; ++i)
 	{
-		TractorTable table(m_PackNum, m_PlayerNum);
-		table.Timer.Init(this, i);
+		TractorTable table(this, i, m_PackNum, m_PlayerNum);
 		m_Tables.push_back(table);
 	}
 
@@ -204,7 +203,7 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum);
+		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
@@ -277,7 +276,7 @@ bool GameRoom::OnIntoRoom(int fd, KVData *kvdata)
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum);
+		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
@@ -383,7 +382,7 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
 	char *num_array = kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum);
+		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
@@ -434,75 +433,27 @@ bool GameRoom::OnAddGame(int fd, KVData *kvdata)
 				<<",fd="<<fd);
 		return false;
 	}
-
 	LOG_DEBUG(logger, "OnAddGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Into Table="<<TableID<<".fd="<<fd);
 
 	//add a new player
-	PlayerMap::iterator it = m_PlayerMap.find(ClientID);
+	PlayerMap::iterator it = m_PlayerMap.find(fd);
 	if(it == m_PlayerMap.end())  //new player
 	{
 		Player temp_player;
 		temp_player.client_id = ClientID;
+		temp_player.client_name = ClientName;
 		temp_player.index = -1;
 		temp_player.table_id = TableID;
 		temp_player.status = STATUS_INVALID;
+		temp_player.fd = fd;
 
-		std::pair<PlayerMap::iterator, bool> ret = m_PlayerMap.insert(std::make_pair(ClientID, temp_player));
+		std::pair<PlayerMap::iterator, bool> ret = m_PlayerMap.insert(std::make_pair(fd, temp_player));
 		assert(ret.second == true);
 		it = ret.first;
 	}
 	Player *player = &it->second;
 	assert(player->table_id == TableID);
-	TractorTable &table = m_Tables[TableID];
-
-	if(table.CurPlayerNum < m_PlayerNum)  //人数未满,成为玩家
-	{
-		player->status = STATUS_WAIT;
-		player->index = table.GetPlayerIndex();
-		assert(player->index != -1);
-		table.IndexPlayer[player->index] = player;
-		++table.CurPlayerNum;
-
-		//如果之前是旁观者,则删除
-		table.Audience.erase(ClientID);
-	}
-	else  //成为旁观者
-	{
-		player->status = STATUS_AUDIENCE;
-		player->index = -1;
-		table.Audience.insert(std::make_pair(ClientID, player));
-	}
-
-	ProtocolContext *send_context = NULL;
-	send_context = NewProtocolContext();
-	assert(send_context != NULL);
-	send_context->type = DTYPE_BIN;
-	send_context->Info = "AddGameRsp";
-
-	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)AddGameRsp);
-	string WelcomeMsg="Welcome "+ClientName;
-	send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
-	send_kvdata.SetValue(KEY_Status, (int)player->status);
-
-	IProtocolFactory *protocol_factory = GetProtocolFactory();
-	uint32_t header_size = protocol_factory->HeaderSize();
-	uint32_t body_size = send_kvdata.Size();
-	send_context->CheckSize(header_size+body_size);
-	send_kvdata.Serialize(send_context->Buffer+header_size);
-	send_context->Size = header_size+body_size;
-
-	//编译头部
-	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-	if(SendProtocol(fd, send_context) == false)
-	{
-		LOG_ERROR(logger, "OnAddGame: send IntoTableRsp to framework failed.fd="<<fd);
-		DeleteProtocolContext(send_context);
-		return false;
-	}
-
-	LOG_DEBUG(logger, "OnAddGame: end AddGameRsp to framework succ.ClientName="<<ClientName<<",ClientID="<<ClientID<<",fd="<<fd);
-	return true;
+	return m_Tables[TableID].OnAddGame(player);
 }
 
 bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
@@ -544,21 +495,19 @@ bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
 
 	LOG_DEBUG(logger, "OnQuitGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<",TableID="<<TableID<<".fd="<<fd);
 
-	PlayerMap::iterator it = m_PlayerMap.find(ClientID);
+	PlayerMap::iterator it = m_PlayerMap.find(fd);
 	if(it != m_PlayerMap.end())
 	{
-		Player *player = it->second;
+		Player *player = &it->second;
 		assert(player->table_id == TableID);
-		TractorTable &table = m_Tables[TableID];
-		if(player->status == STATUS_AUDIENCE)
-		{
-			table.Audience.erase(ClientID);
-			//TODO:其他玩家设置为STATUS_WAIT状态
-		}
-		else
-			table.IndexPlayer[player->index] = NULL;
-		m_PlayerMap.erase(it);
+		m_Tables[TableID].OnQuitGame(player);
+		m_PlayerMap.erase(fd);
 	}
+	else
+	{
+		LOG_ERROR(logger,"OnQuitGame: not found player.fd="<<fd);
+	}
+
 	return true;
 }
 
@@ -601,47 +550,17 @@ bool GameRoom::OnStartGame(int fd, KVData *kvdata)
 
 	LOG_DEBUG(logger, "OnStartGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<",TableID="<<TableID<<".fd="<<fd);
 
-	PlayerMap::iterator it = m_PlayerMap.find(ClientID);
+	PlayerMap::iterator it = m_PlayerMap.find(fd);
 	if(it != m_PlayerMap.end())
 	{
-		Player &player = it->second;
-		assert(player.table_id==TableID && player.status==STATUS_WAIT);
-		player.status = STATUS_PLAYING;
-
-		//判断所有的玩家是否都是PLAYING状态
-		int i;
-		for(i=0; i<m_PlayerNum; ++i)
-		{
-			if(m_Tables[TableID].IndexPlayer[i]==NULL
-				|| m_Tables[TableID].IndexPlayer[i]->status!=STATUS_PLAYING)
-				break;
-		}
-
-		//所有玩家都进入PLAYING状态
-		if(i >= m_PlayerNum)
-		{
-			//启动时钟开始发牌
-			IEventServer *event_server = GetEventServer();
-			IEventHandler *timer_handler = &m_Tables[TableID].Timer;
-			if(!event_server->AddTimer(timer_handler, 500, true))
-			{
-				LOG_ERROR(logger, "OnStartGame: all player are ready but add deal timer failed. TableID="<<TableID<<". fd="<<fd);
-				assert(0);
-			}
-			LOG_INFO(logger, "OnStartGame: all player are ready add deal timer succ. TableID="<<TableID<<". fd="<<fd);
-		}
+		Player *player = &it->second;
+		m_Tables[TableID].OnStartGame(player);
 	}
 	else
 	{
-		LOG_ERROR(logger, "OnStartGame: not found ClientID="<<ClientID<<". fd="<<fd);
+		LOG_ERROR(logger, "OnstartGame: Can't find player. ClientID="<<ClientID<<",ClientName="<<ClientName<<",TableID="<<TableID<<".fd="<<fd);
 	}
 
 	return true;
 }
 
-//为table_id的桌子发牌
-bool GameRoom::OnTableTimerTimeout(int table_id)
-{
-
-	return true;
-}

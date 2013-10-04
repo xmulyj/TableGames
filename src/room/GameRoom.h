@@ -64,10 +64,6 @@ public:
 	//socket需要结束时调用本接口
 	//  @param fd             : 需要结束的socket
 	void OnSocketFinished(int32_t fd);
-public:
-	//桌面时钟超时响应方法
-	//返回true时钟继续有效;返回false时钟结束
-	bool OnTableTimerTimeout(int table_id);
 private:  //IEventHandler接口方法
 	//时钟超时
 	void OnTimeout(uint64_t nowtime_ms);

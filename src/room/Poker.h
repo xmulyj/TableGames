@@ -24,6 +24,8 @@ public:
 	void Shuffle();
 	//分牌.返回-1表示没有牌
 	int Deal();
+	//剩余
+	int Remain();
 private:
 	int m_N;
 	vector<int> m_Poker;   //待分发的扑克牌
