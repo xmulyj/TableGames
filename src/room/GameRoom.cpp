@@ -82,7 +82,7 @@ int32_t GameRoom::GetSocketRecvTimeout()
 
 int32_t GameRoom::GetSocketIdleTimeout()
 {
-	return 3000;
+	return 120000;
 }
 
 int32_t GameRoom::GetMaxConnections()
@@ -105,12 +105,6 @@ bool GameRoom::OnReceiveProtocol(int32_t fd, ProtocolContext *context, bool &det
 
 	switch(protocol)
 	{
-	case IntoRoom:
-		return OnIntoRoom(fd, kvdata);
-		break;
-	case OutRoom:
-		return OnOutRoom(fd, kvdata);
-		break;
 	case GetRoomInfo:
 		return OnGetRoomInfo(fd, kvdata);
 		break;
@@ -228,115 +222,6 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	return ;
 }
 
-bool GameRoom::OnIntoRoom(int fd, KVData *kvdata)
-{
-	int RoomID;
-	int ClientID;
-	string ClientName;
-
-	if(!kvdata->GetValue(KEY_RoomID, RoomID))
-	{
-		LOG_ERROR(logger, "OnIntoRoom: get RoomID failed. fd="<<fd);
-		return false;
-	}
-	if(!kvdata->GetValue(KEY_ClientID, ClientID))
-	{
-		LOG_ERROR(logger, "OnIntoRoom: get ClientID failed. fd="<<fd);
-		return false;
-	}
-	if(!kvdata->GetValue(KEY_ClientName, ClientName))
-	{
-		LOG_ERROR(logger, "OnIntoRoom: get ClientName failed. fd="<<fd);
-		return false;
-	}
-
-	if(RoomID != m_ID)
-	{
-		LOG_ERROR(logger, "OnIntoRoom: room_id invalid. recv RoomID="<<RoomID<<",my RoomID="<<m_ID<<",fd="<<fd);
-		return false;
-	}
-
-	LOG_DEBUG(logger, "OnIntoRoom: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Into Room. fd="<<fd);
-
-	ProtocolContext *send_context = NULL;
-	send_context = NewProtocolContext();
-	assert(send_context != NULL);
-	send_context->type = DTYPE_BIN;
-	send_context->Info = "IntoRoomRsp";
-
-	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)IntoRoomRsp);
-	string WelcomeMsg="Welcome "+ClientName;
-	send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
-	send_kvdata.SetValue(KEY_RoomID, RoomID);
-	send_kvdata.SetValue(KEY_ClientNum, m_ClientNum+1);
-	send_kvdata.SetValue(KEY_TableNum, m_TableNum);
-
-	IProtocolFactory *protocol_factory = GetProtocolFactory();
-	uint32_t header_size = protocol_factory->HeaderSize();
-	uint32_t body_size = send_kvdata.Size();
-	send_context->CheckSize(header_size+body_size);
-	send_kvdata.Serialize(send_context->Buffer+header_size);
-	send_context->Size = header_size+body_size;
-
-	//Set NumArray
-	int buf_size = sizeof(int)*m_TableNum;
-	send_context->CheckSize(KVData::SizeBytes(buf_size));
-	char *data_buffer = send_context->Buffer+send_context->Size;
-	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
-	int *num_array = (int*)kv_buffer.second;
-	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
-	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
-
-	//编译头部
-	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-	if(SendProtocol(fd, send_context) == false)
-	{
-		LOG_ERROR(logger, "send IntoRoomRsp to framework failed.fd="<<fd);
-		DeleteProtocolContext(send_context);
-		return false;
-	}
-
-	++m_ClientNum;
-	LOG_DEBUG(logger, "send IntoRoomRsp to framework succ.cur ClientNum="<<m_ClientNum<<",fd="<<fd);
-	return true;
-}
-
-bool GameRoom::OnOutRoom(int fd, KVData *kvdata)
-{
-	int RoomID;
-	int ClientID;
-	string ClientName;
-
-	if(!kvdata->GetValue(KEY_RoomID, RoomID))
-	{
-		LOG_ERROR(logger, "OnOutRoom: get RoomID failed. fd="<<fd);
-		return false;
-	}
-	if(!kvdata->GetValue(KEY_ClientID, ClientID))
-	{
-		LOG_ERROR(logger, "OnOutRoom: get ClientID failed. fd="<<fd);
-		return false;
-	}
-	if(!kvdata->GetValue(KEY_ClientName, ClientName))
-	{
-		LOG_ERROR(logger, "OnOutRoom: get ClientName failed. fd="<<fd);
-		return false;
-	}
-
-	if(RoomID != m_ID)
-	{
-		LOG_ERROR(logger, "OnOutRoom: room_id invalid. recv RoomID="<<RoomID<<",my RoomID="<<m_ID<<",fd="<<fd);
-		return false;
-	}
-
-	--m_ClientNum;
-	LOG_DEBUG(logger, "OnOutRoom: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Out Room. cur ClientNum="<<m_ClientNum<<",fd="<<fd);
-
-	return true;
-}
-
 bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 {
 	int RoomID;
@@ -390,7 +275,7 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 	send_context->CheckSize(KVData::SizeBytes(buf_size));
 	char *data_buffer = send_context->Buffer+send_context->Size;
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
-	char *num_array = kv_buffer.second;
+	int *num_array = (int*)kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
 		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);

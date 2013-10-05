@@ -15,16 +15,13 @@
 #define GetAllRoomRsp       2
 #define GetRoomAddr         3
 #define GetRoomAddrRsp      4
-#define IntoRoom            5
-#define IntoRoomRsp         6
-#define OutRoom             7
-#define GetRoomInfo         8
-#define GetRoomInfoRsp      9
-#define AddGame             10
-#define AddGameRsp          11
-#define QuitGame            12
-#define StartGame           13
-#define DealPoker           14
+#define GetRoomInfo         7
+#define GetRoomInfoRsp      8
+#define AddGame             9
+#define AddGameRsp          10
+#define QuitGame            11
+#define StartGame           12
+#define DealPoker           13
 
 //KeyName Define
 //////////////////////////////
