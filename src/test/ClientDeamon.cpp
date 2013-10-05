@@ -52,8 +52,8 @@ static string gInterfaceIP;
 static int    gInterfacePort = 0;
 static int    gCurStatus  = Status_ListAllRoom;
 
-static int    gSelectRoomIndex = -1;
-static int    gSelectTableIndex = -1;
+static int    gSelectRoomIndex = -2;
+static int    gSelectTableIndex = -2;
 
 //刷新所有房间信息
 static int RefreshAllRoom();
@@ -211,14 +211,16 @@ int RefreshAllRoom()
 		printf("[%d]: RoomID=%d, ClientNum=%d\n", i, gRoomList[i].RoomID, gRoomList[i].ClientNum);
 	printf("----------------------\n");
 
-	gSelectRoomIndex = -1;
+	gSelectRoomIndex = -2;
 	if(gRoomList.size() > 0)
 	{
 		alarm(2);
-		printf("\nSelect game room index:");
+		printf("\nSelect game room index(-1 exit):");
 		fflush(stdout);
 		scanf("%d", &gSelectRoomIndex);
-		if(gSelectRoomIndex>=0 && gSelectRoomIndex<gRoomList.size())
+		if(gSelectRoomIndex == -1)
+			gCurStatus = Status_UnKnow;
+		else if(gSelectRoomIndex>=0 && gSelectRoomIndex<gRoomList.size())
 		{
 			printf("go into room[%d] now ...\n", gSelectRoomIndex);
 			gCurStatus = Status_IntoRoom;
@@ -389,10 +391,13 @@ int GotoRoom(int room_index)
 
 
 		alarm(3);
-		printf("\nselect game table index:");
+		printf("\nselect game table index(-1 back):");
 		fflush(stdout);
+		gSelectTableIndex = -2;
 		scanf("%d", &gSelectTableIndex);
-		if(gSelectTableIndex>=0 && gSelectTableIndex<room_info.NumArray.size())
+		if(gSelectTableIndex == -1)
+			gCurStatus = Status_ListAllRoom;
+		else if(gSelectTableIndex>=0 && gSelectTableIndex<room_info.NumArray.size())
 			printf("go into room=[%d]->table[%d] now ...\n", gSelectRoomIndex, gSelectTableIndex);
 		alarm(0);
 	}
