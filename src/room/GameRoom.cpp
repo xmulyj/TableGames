@@ -55,6 +55,14 @@ bool GameRoom::Start()
 
 	m_InterfaceFD = -1;
 
+	int listen_fd = Listen(m_Port, m_IP.c_str());
+	if(listen_fd < 0)
+	{
+		LOG_ERROR(logger, "listen failed on: "<<m_IP<<":"<<m_Port);
+		assert(0);
+	}
+	LOG_INFO(logger, "listen succ on: "<<m_IP<<":"<<m_Port);
+
 	IEventServer *event_server = GetEventServer();
 	//注册定时发送ping包时钟
 	if(event_server->AddTimer(this, 1000, true) == false)
@@ -276,7 +284,7 @@ bool GameRoom::OnIntoRoom(int fd, KVData *kvdata)
 	send_context->CheckSize(KVData::SizeBytes(buf_size));
 	char *data_buffer = send_context->Buffer+send_context->Size;
 	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
-	char *num_array = kv_buffer.second;
+	int *num_array = (int*)kv_buffer.second;
 	for(int i=0; i<m_TableNum; ++i)
 		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
 	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
