@@ -537,8 +537,43 @@ int OnSelectTable(int room_index, int table_index)
 		StrStatus = "Playing";
 	else
 		StrStatus = "UnkonwStatus!!!";
-	printf("ServerMsg=[%s],Status=[%s]\n", WelcomeMsg.c_str(), StrStatus.c_str());
 
-	sleep(3);
+	alarm(3);
+	if(Status != 2)
+	{
+		printf("ServerMsg=[%s],Status=[%s]\n", WelcomeMsg.c_str(), StrStatus.c_str());
+		pause();
+	}
+	else
+	{
+		alarm(3);
+		printf("ServerMsg=[%s],Status=[%s]\nStart?(y/n):", WelcomeMsg.c_str(), StrStatus.c_str());
+		char c = 0;
+		scanf("%c", &c);
+		if(c=='y' || c=='Y')
+		{
+			//get room info;
+			KVData kvdata(true);
+			kvdata.SetValue(KEY_Protocol, StartGame);
+			kvdata.SetValue(KEY_RoomID, room_info.RoomID);
+			kvdata.SetValue(KEY_TableID, table_index);
+			kvdata.SetValue(KEY_ClientID, gUID);
+			kvdata.SetValue(KEY_ClientName, gUName);
+
+			KVDataProtocolFactory factory;
+			unsigned int header_size = factory.HeaderSize();
+			unsigned int body_size = kvdata.Size();
+			ProtocolContext context(header_size+body_size);
+
+			kvdata.Serialize(context.Buffer+header_size);
+			context.Size = header_size+body_size;
+			factory.EncodeHeader(context.Buffer, body_size);
+
+			int send_size = Socket::SendAll(room_info.fd, context.Buffer, context.Size);
+			assert(send_size == context.Size);
+		}
+	}
+	alarm(0);
+
 	return 0;
 }

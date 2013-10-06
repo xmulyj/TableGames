@@ -143,22 +143,25 @@ int TractorTable::GetPlayerIndex()
 
 bool TractorTable::OnAddGame(Player *player)
 {
-	if(m_CurPlayerNum < m_PlayerNum)  //人数未满,成为玩家
+	if(player->status <= STATUS_AUDIENCE)
 	{
-		player->status = STATUS_WAIT;
-		player->index = GetPlayerIndex();
-		assert(player->index != -1);
-		m_Player[player->index] = player;
-		++m_CurPlayerNum;
+		if(m_CurPlayerNum < m_PlayerNum)   //人数未满,成为玩家
+		{
+			player->status = STATUS_WAIT;
+			player->index = GetPlayerIndex();
+			assert(player->index != -1);
+			m_Player[player->index] = player;
+			++m_CurPlayerNum;
 
-		//如果之前是旁观者,则删除
-		m_Audience.erase(player->client_id);
-	}
-	else  //成为旁观者
-	{
-		player->status = STATUS_AUDIENCE;
-		player->index = -1;
-		m_Audience.insert(std::make_pair(player->client_id, player));
+			//如果之前是旁观者,则删除
+			m_Audience.erase(player->client_id);
+		}
+		else  //成为旁观者
+		{
+			player->status = STATUS_AUDIENCE;
+			player->index = -1;
+			m_Audience.insert(std::make_pair(player->client_id, player));
+		}
 	}
 
 	ProtocolContext *send_context = NULL;
@@ -189,7 +192,7 @@ bool TractorTable::OnAddGame(Player *player)
 		return false;
 	}
 
-	LOG_DEBUG(logger, "OnAddGame: end AddGameRsp to framework succ.ClientName="<<player->client_name<<",ClientID="<<player->client_id<<",fd="<<player->fd);
+	LOG_DEBUG(logger, "OnAddGame: send AddGameRsp to framework succ.ClientName="<<player->client_name<<",ClientID="<<player->client_id<<",fd="<<player->fd);
 	return true;
 }
 
