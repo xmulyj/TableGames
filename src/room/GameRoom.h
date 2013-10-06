@@ -12,6 +12,10 @@
 #include "KVData.h"
 using namespace easynet;
 
+#include <map>
+#include <set>
+using namespace std;
+
 #include "TractorTable.h"
 
 //默认使用以下组件实例:
@@ -86,13 +90,16 @@ private:
 	int    m_PackNum;
 	int    m_PlayerNum;  //一次几个玩家
 	PlayerMap m_PlayerMap;
+	map<int, int> m_FDClientMap;
+	set<int>      m_ClientSet;
 
 	vector<TractorTable> m_Tables;
-	int    m_ClientNum;  //房间中总人数(玩家+游客)
 
 	string m_InterfaceIP;
 	int    m_InterfacePort;
 	int    m_InterfaceFD;
+
+	void OnAbortQuitGame(Player &player);  //意外退出游戏
 private:
 	DECL_LOGGER(logger);
 };

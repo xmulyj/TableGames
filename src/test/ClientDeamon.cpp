@@ -27,6 +27,7 @@ typedef enum __client_status__
 	Status_UnKnow,
 	Status_ListAllRoom,
 	Status_IntoRoom,
+	Status_SelectTable,
 }ClietStatus;
 
 typedef struct _room_info
@@ -54,10 +55,12 @@ static int    gSelectTableIndex = -2;
 
 //刷新所有房间信息
 static int _GetAllRoomInfo();
-static int RefreshAllRoom();
+static int OnRefreshAllRoom();
 
 static bool _GetRoomAddr(RoomInfo &room_Info);
-static int GotoRoom(int room_index);
+static int OnGotoRoom(int room_index);
+
+static int OnSelectTable(int room_index, int table_index);
 
 static void sig_alarm(int)
 {
@@ -101,10 +104,13 @@ int main(int argc, char *argv[])
 		switch(gCurStatus)
 		{
 		case Status_ListAllRoom:  //请求interface
-			RefreshAllRoom();
+			OnRefreshAllRoom();
 			break;
 		case Status_IntoRoom:
-			GotoRoom(gSelectRoomIndex);
+			OnGotoRoom(gSelectRoomIndex);
+			break;
+		case Status_SelectTable:
+			OnSelectTable(gSelectRoomIndex, gSelectTableIndex);
 			break;
 		case Status_UnKnow:
 		default:
@@ -201,7 +207,7 @@ int _GetAllRoomInfo()
 	Socket::Close(fd);
 }
 
-int RefreshAllRoom()
+int OnRefreshAllRoom()
 {
 	if(gRoomList.empty())
 	{
@@ -301,7 +307,7 @@ bool _GetRoomAddr(RoomInfo &room_info)
 	return true;
 }
 
-int GotoRoom(int room_index)
+int OnGotoRoom(int room_index)
 {
 	assert(room_index>=0 && room_index<gRoomList.size());
 	RoomInfo &room_info = gRoomList[room_index];
@@ -427,6 +433,7 @@ int GotoRoom(int room_index)
 		else if(gSelectTableIndex>=0 && gSelectTableIndex<room_info.TableArray.size())
 		{
 			printf("go into room=[%d]->table[%d] now ...\n", gSelectRoomIndex, gSelectTableIndex);
+			gCurStatus = Status_SelectTable;
 		}
 		else
 		{
@@ -435,5 +442,103 @@ int GotoRoom(int room_index)
 		alarm(0);
 	}
 
+	return 0;
+}
+
+int OnSelectTable(int room_index, int table_index)
+{
+	RoomInfo &room_info = gRoomList[room_index];
+	if(room_info.fd < 0)
+	{
+		if(!_GetRoomAddr(room_info))
+		{
+			printf("get room[%d] address failed.\n");
+			gCurStatus = Status_IntoRoom;
+			return -1;
+		}
+		printf("get room[%d] address successful. ip=%s:%d\n", room_index, gRoomList[room_index].IP.c_str(), gRoomList[room_index].Port);
+		//connect room
+		int fd = Socket::Connect(room_info.Port, room_info.IP.c_str());
+		if(fd < 0)
+		{
+			printf("connect room=%s:%d failed.\n", room_info.IP.c_str(), room_info.Port);
+			gCurStatus = Status_IntoRoom;
+			return -2;
+		}
+		room_info.fd = fd;
+	}
+
+	printf("add game. room=[%d]->table[%d] ...\n", room_index, table_index);
+	//get room info;
+	KVData kvdata(true);
+	kvdata.SetValue(KEY_Protocol, AddGame);
+	kvdata.SetValue(KEY_RoomID, room_info.RoomID);
+	kvdata.SetValue(KEY_TableID, table_index);
+	kvdata.SetValue(KEY_ClientID, gUID);
+	kvdata.SetValue(KEY_ClientName, gUName);
+
+	KVDataProtocolFactory factory;
+	unsigned int header_size = factory.HeaderSize();
+	unsigned int body_size = kvdata.Size();
+	ProtocolContext context(header_size+body_size);
+
+	kvdata.Serialize(context.Buffer+header_size);
+	context.Size = header_size+body_size;
+	factory.EncodeHeader(context.Buffer, body_size);
+
+	int send_size = Socket::SendAll(room_info.fd, context.Buffer, context.Size);
+	assert(send_size == context.Size);
+
+	//receive respond
+	context.header_size = header_size;
+	int recv_size = Socket::RecvAll(room_info.fd, context.Buffer, context.header_size);
+	assert(recv_size == context.header_size);
+
+	if(DECODE_SUCC != factory.DecodeHeader(context.Buffer, context.type, context.body_size))
+	{
+		printf("decode header failed.");
+		Socket::Close(room_info.fd);
+		room_info.fd = -1;
+		gCurStatus = Status_IntoRoom;
+		return -3;
+	}
+
+	context.CheckSize(context.header_size+context.body_size);
+	recv_size = Socket::RecvAll(room_info.fd, context.Buffer+context.header_size, context.body_size);
+	assert(recv_size == context.body_size);
+	context.Size = context.header_size+context.body_size;
+
+	if(DECODE_SUCC != factory.DecodeBinBody(&context))
+	{
+		printf("decode body failed.\n");
+		Socket::Close(room_info.fd);
+		room_info.fd = -1;
+		gCurStatus = Status_IntoRoom;
+		return -4;
+	}
+
+	KVData *recv_kvdata = (KVData*)context.protocol;
+	int Protocol;
+	recv_kvdata->GetValue(KEY_Protocol, Protocol);
+	assert(Protocol == AddGameRsp);
+
+	string WelcomeMsg;
+	int    Status;
+	recv_kvdata->GetValue(KEY_WelcomeMsg, WelcomeMsg);
+	recv_kvdata->GetValue(KEY_Status, Status);
+	factory.DeleteProtocol(-1, context.protocol);
+
+	string StrStatus;
+	if(Status == 1)
+		StrStatus = "Audience";
+	else if(Status == 2)
+		StrStatus = "Wait to Start";
+	else if(Status == 3)
+		StrStatus = "Playing";
+	else
+		StrStatus = "UnkonwStatus!!!";
+	printf("ServerMsg=[%s],Status=[%s]\n", WelcomeMsg.c_str(), StrStatus.c_str());
+
+	sleep(3);
 	return 0;
 }

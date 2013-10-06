@@ -135,7 +135,7 @@ int TractorTable::GetPlayerIndex()
 	if(m_CurPlayerNum >= m_PlayerNum)
 		return -1;
 	for(int i=0; i<m_PlayerNum; ++i)
-		if(m_Player[i] != NULL)
+		if(m_Player[i] == NULL)
 			return i;
 	return -1;
 }

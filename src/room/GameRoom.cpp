@@ -37,7 +37,6 @@ bool GameRoom::Start()
 	assert(m_TableNum > 0);
 	m_PackNum = gConfigReader.GetValue("PackNum", -1);
 	assert(m_PackNum > 0);
-	m_ClientNum = 0;
 
 	m_PlayerNum = 4;
 
@@ -157,8 +156,31 @@ void GameRoom::OnSocketFinished(int32_t fd)
 	//close it?
 	Socket::Close(fd);
 	if(fd == m_InterfaceFD)
+	{
 		m_InterfaceFD = -1;
+	}
+	else
+	{
+		{
+		map<int, int>::iterator it = m_FDClientMap.find(fd);
+		if(it != m_FDClientMap.end())
+		{
+			LOG_DEBUG(logger, "OnSocketFinished:remove ClientID="<<it->second<<".fd="<<fd);
+			m_ClientSet.erase(it->second);
+			m_FDClientMap.erase(it);
+		}
+		}
 
+		{
+		PlayerMap::iterator it = m_PlayerMap.find(fd);
+		if(it != m_PlayerMap.end())
+		{
+			//TODO:意外断开,退出游戏
+			OnAbortQuitGame(it->second);
+			m_PlayerMap.erase(it);
+		}
+		}
+	}
 	return ;
 }
 
@@ -190,7 +212,7 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	send_kvdata.SetValue(KEY_RoomID, m_ID);
 	send_kvdata.SetValue(KEY_RoomIP, m_IP);
 	send_kvdata.SetValue(KEY_RoomPort, m_Port);
-	send_kvdata.SetValue(KEY_ClientNum, m_ClientNum);
+	send_kvdata.SetValue(KEY_ClientNum,(int)m_ClientSet.size());
 	send_kvdata.SetValue(KEY_TableNum, m_TableNum);
 
 	IProtocolFactory *protocol_factory = GetProtocolFactory();
@@ -251,6 +273,19 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 	}
 	LOG_DEBUG(logger, "OnGetRoomInfo: ClientID="<<ClientID<<",ClientName="<<ClientName<<",fd="<<fd);
 
+	//统计人数
+	map<int,int>::iterator it = m_FDClientMap.find(fd);
+	if(it == m_FDClientMap.end())
+	{
+		m_FDClientMap.insert(std::make_pair(fd, ClientID));
+		m_ClientSet.insert(ClientID);
+	}
+	else if(it->second != ClientID)
+	{
+		m_ClientSet.erase(it->second);
+		it->second = ClientID;
+	}
+
 	ProtocolContext *send_context = NULL;
 	send_context = NewProtocolContext();
 	assert(send_context != NULL);
@@ -260,7 +295,7 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 	KVData send_kvdata(true);
 	send_kvdata.SetValue(KEY_Protocol, (int)GetRoomInfoRsp);
 	send_kvdata.SetValue(KEY_RoomID, RoomID);
-	send_kvdata.SetValue(KEY_ClientNum, m_ClientNum);
+	send_kvdata.SetValue(KEY_ClientNum, (int)m_ClientSet.size());
 	send_kvdata.SetValue(KEY_TableNum, m_TableNum);
 
 	IProtocolFactory *protocol_factory = GetProtocolFactory();
@@ -288,7 +323,7 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 		DeleteProtocolContext(send_context);
 		return false;
 	}
-	LOG_DEBUG(logger, "OnGetRoomInfo: send IntoRoomRsp to framework succ.cur ClientNum="<<m_ClientNum<<",fd="<<fd);
+	LOG_DEBUG(logger, "OnGetRoomInfo: send IntoRoomRsp to framework succ.cur ClientNum="<<m_ClientSet.size()<<",fd="<<fd);
 	return true;
 }
 
@@ -329,6 +364,21 @@ bool GameRoom::OnAddGame(int fd, KVData *kvdata)
 		return false;
 	}
 	LOG_DEBUG(logger, "OnAddGame: ClientID="<<ClientID<<",ClientName="<<ClientName<<" Into Table="<<TableID<<".fd="<<fd);
+
+	//统计人数
+	{
+	map<int,int>::iterator it = m_FDClientMap.find(fd);
+	if(it == m_FDClientMap.end())
+	{
+		m_FDClientMap.insert(std::make_pair(fd, ClientID));
+		m_ClientSet.insert(ClientID);
+	}
+	else if(it->second != ClientID)
+	{
+		m_ClientSet.erase(it->second);
+		it->second = ClientID;
+	}
+	}
 
 	//add a new player
 	PlayerMap::iterator it = m_PlayerMap.find(fd);
@@ -404,6 +454,12 @@ bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
 	}
 
 	return true;
+}
+
+void GameRoom::OnAbortQuitGame(Player &player)  //意外退出游戏
+{
+	LOG_ERROR(logger, "OnAbortQuitGame:ClientID="<<player.client_id<<".fd="<<player.fd);
+	//TODO:
 }
 
 bool GameRoom::OnStartGame(int fd, KVData *kvdata)
