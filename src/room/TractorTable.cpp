@@ -51,7 +51,7 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 	}
 
 	bool finished = false;
-	int start = m_Dealer;  //从庄家开始发牌
+	int start = m_Dealer<0?0:m_Dealer;  //从庄家开始发牌
 	for(i=0; i<m_PlayerNum; ++i)
 	{
 		m_Player[start]->poker.push_back(m_Poker.Deal());
@@ -172,9 +172,11 @@ bool TractorTable::OnAddGame(Player *player)
 
 	KVData send_kvdata(true);
 	send_kvdata.SetValue(KEY_Protocol, (int)AddGameRsp);
-	string WelcomeMsg="Welcome: "+player->client_name;
+	string WelcomeMsg="Welcome:"+player->client_name;
 	send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
-	send_kvdata.SetValue(KEY_Status, (int)player->status);
+	send_kvdata.SetValue(KEY_PlayerNum, m_PlayerNum);
+	send_kvdata.SetValue(KEY_ClientNum, m_CurPlayerNum);
+	send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
 
 	IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
 	uint32_t header_size = protocol_factory->HeaderSize();
@@ -182,6 +184,27 @@ bool TractorTable::OnAddGame(Player *player)
 	send_context->CheckSize(header_size+body_size);
 	send_kvdata.Serialize(send_context->Buffer+header_size);
 	send_context->Size = header_size+body_size;
+
+	//设置NumArray
+	int size_array = sizeof(int)*2*(m_CurPlayerNum+m_Audience.size());
+	send_context->CheckSize(KVData::SizeBytes(size_array));
+
+	KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_NumArray, true);
+	int *num_array = (int*)kv_buf.second;
+	for(int i=0; i<m_PlayerNum; ++i)
+	{
+		if(m_Player[i] == NULL)
+			continue;
+		*num_array++ = htonl(m_Player[i]->client_id);
+		*num_array++ = htonl((int)m_Player[i]->status);
+	}
+	for(PPlayerMap::iterator it=m_Audience.begin(); it!=m_Audience.end(); ++it)
+	{
+		*num_array++ = htonl(it->second->client_id);
+		*num_array++ = htonl(it->second->status);
+	}
+
+	send_context->Size += KVData::EndWrite(kv_buf, size_array);
 
 	//编译头部
 	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
@@ -205,13 +228,14 @@ bool TractorTable::OnQuitGame(Player *player)
 	else
 	{
 		m_Player[player->index] = NULL;
+		--m_CurPlayerNum;
 		//其他玩家设置为STATUS_WAIT状态
 		for(int i=0; i<m_PlayerNum; ++i)
 		{
-			if(m_Player[player->index] != NULL)
+			if(m_Player[i] != NULL)
 			{
-				m_Player[player->index]->status = STATUS_WAIT;
-				m_Player[player->index]->poker.clear();
+				m_Player[i]->status = STATUS_WAIT;
+				m_Player[i]->poker.clear();
 			}
 		}
 	}

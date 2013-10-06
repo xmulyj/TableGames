@@ -38,6 +38,7 @@
 #define KEY_RoomNum         10
 #define KEY_WelcomeMsg      11
 #define KEY_Status          12
-
+#define KEY_PlayerNum       13
+#define KEY_AudienceNum     14
 
 #endif /* KEYDEFINE_H_ */

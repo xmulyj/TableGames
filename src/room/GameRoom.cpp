@@ -458,8 +458,11 @@ bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
 
 void GameRoom::OnAbortQuitGame(Player &player)  //意外退出游戏
 {
-	LOG_ERROR(logger, "OnAbortQuitGame:ClientID="<<player.client_id<<".fd="<<player.fd);
+	LOG_ERROR(logger, "OnAbortQuitGame:ClientID="<<player.client_id<<",TableID="<<player.table_id<<".fd="<<player.fd);
 	//TODO:
+	if(player.table_id<0 || player.table_id>=m_TableNum)
+		return ;
+	m_Tables[player.table_id].OnQuitGame(&player);
 }
 
 bool GameRoom::OnStartGame(int fd, KVData *kvdata)

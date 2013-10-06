@@ -39,9 +39,15 @@ typedef struct _room_info
 
 	int         fd;  //连接
 	vector<int> TableArray;  //每桌玩家数量
+
 }RoomInfo;
 static vector<RoomInfo> gRoomList;
 
+typedef struct _player_status_
+{
+	int client_id;
+	int	status;
+}PlayerStatus;
 
 //Game Interface Address
 static int    gUID=-1;
@@ -523,31 +529,79 @@ int OnSelectTable(int room_index, int table_index)
 	assert(Protocol == AddGameRsp);
 
 	string WelcomeMsg;
+	int    PlayerNum;
+	int    ClientNum;
+	vector<PlayerStatus> ClientStatus;
+	vector<PlayerStatus> AudienceStatus;
+	int    AudienceNum;
+	char   *NumArray;
 	int    Status;
+
 	recv_kvdata->GetValue(KEY_WelcomeMsg, WelcomeMsg);
-	recv_kvdata->GetValue(KEY_Status, Status);
+	recv_kvdata->GetValue(KEY_PlayerNum, PlayerNum);
+	recv_kvdata->GetValue(KEY_ClientNum, ClientNum);
+	recv_kvdata->GetValue(KEY_AudienceNum, AudienceNum);
+	unsigned int size=0;
+	recv_kvdata->GetValue(KEY_NumArray, NumArray, size);
+	assert(size == sizeof(int)*2*(ClientNum+AudienceNum));
+
+	int *temp_buf = (int*)NumArray, i=0;
+	for(i=0; i<ClientNum; ++i)
+	{
+		PlayerStatus player_status;
+		player_status.client_id = ntohl(*temp_buf++);
+		player_status.status = ntohl(*temp_buf++);
+		ClientStatus.push_back(player_status);
+		if(player_status.client_id == gUID)
+			Status = player_status.status;
+	}
+	for(int i=0; i<AudienceNum; ++i)
+	{
+		PlayerStatus player_status;
+		player_status.client_id = ntohl(*temp_buf++);
+		player_status.status = ntohl(*temp_buf++);
+		AudienceStatus.push_back(player_status);
+		if(player_status.client_id == gUID)
+			Status = player_status.status;
+	}
+
 	factory.DeleteProtocol(-1, context.protocol);
 
-	string StrStatus;
-	if(Status == 1)
-		StrStatus = "Audience";
-	else if(Status == 2)
-		StrStatus = "Wait to Start";
-	else if(Status == 3)
-		StrStatus = "Playing";
+	string StrStatus[4]={"Unknow Status","Audience","Wait to Start","Playing"};
+
+	printf("\n==============================\nTableInfo: PlayerNum=%d,CurPlayerNum=%d,AudienceNum=%d,ServerMsg=[%s]\n------------------------------\n", PlayerNum
+					,ClientNum, AudienceNum, WelcomeMsg.c_str());
+	printf("[Player List]\n");
+	for(int i=0; i<ClientStatus.size(); ++i)
+	{
+		if(ClientStatus[i].client_id == gUID)
+			printf("#[%d]:ClintID=%d,Status=%s\n", i, ClientStatus[i].client_id, StrStatus[ClientStatus[i].status].c_str());
+		else
+			printf("[%d]:ClintID=%d,Status=%s\n", i, ClientStatus[i].client_id, StrStatus[ClientStatus[i].status].c_str());
+	}
+
+	if(AudienceStatus.size() == 0)
+		printf("\n[Audience List]\n(empty)\n");
 	else
-		StrStatus = "UnkonwStatus!!!";
+		printf("\n[Audience List]\n");
+
+	for(int i=0; i<AudienceStatus.size(); ++i)
+	{
+		if(AudienceStatus[i].client_id == gUID)
+			printf("#[%d]:ClintID=%d,Status=%s\n", i, AudienceStatus[i].client_id, StrStatus[AudienceStatus[i].status].c_str());
+		else
+			printf("[%d]:ClintID=%d,Status=%s\n", i, AudienceStatus[i].client_id, StrStatus[AudienceStatus[i].status].c_str());
+	}
+	printf("\n------------------------------\n");
 
 	alarm(3);
-	if(Status != 2)
+	if(Status != 2)  //wait to start
 	{
-		printf("ServerMsg=[%s],Status=[%s]\n", WelcomeMsg.c_str(), StrStatus.c_str());
 		pause();
 	}
 	else
 	{
-		alarm(3);
-		printf("ServerMsg=[%s],Status=[%s]\nStart?(y/n):", WelcomeMsg.c_str(), StrStatus.c_str());
+		printf("Start to play game?(y/n):", WelcomeMsg.c_str(), StrStatus[Status].c_str());
 		char c = 0;
 		scanf("%c", &c);
 		if(c=='y' || c=='Y')
