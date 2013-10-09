@@ -38,7 +38,7 @@ bool GameRoom::Start()
 	m_PackNum = gConfigReader.GetValue("PackNum", -1);
 	assert(m_PackNum > 0);
 
-	m_PlayerNum = 4;
+	m_PlayerNum = 4;  //游戏需要几个玩家
 
 	for(int i=0; i<m_TableNum; ++i)
 	{
@@ -180,6 +180,8 @@ void GameRoom::OnSocketFinished(int32_t fd)
 			m_PlayerMap.erase(it);
 		}
 		}
+
+		RoomInfoBroadCast();
 	}
 	return ;
 }
@@ -244,6 +246,57 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	return ;
 }
 
+void GameRoom::RoomInfoBroadCast()
+{
+	LOG_DEBUG(logger, "RoomInfoBroadCast");
+
+	map<int,int>::iterator it;
+	//广播房间信息
+	for(it=m_FDClientMap.begin(); it!=m_FDClientMap.end(); ++it)
+	{
+		if(m_PlayerMap.find(it->second) != m_PlayerMap.end())
+			continue;
+
+		ProtocolContext *send_context = NULL;
+		send_context = NewProtocolContext();
+		assert(send_context != NULL);
+		send_context->type = DTYPE_BIN;
+		send_context->Info = "GetRoomInfoRsp";
+
+		KVData send_kvdata(true);
+		send_kvdata.SetValue(KEY_Protocol, (int)GetRoomInfoRsp);
+		send_kvdata.SetValue(KEY_RoomID, m_ID);
+		send_kvdata.SetValue(KEY_PlayerNum, m_PlayerNum);
+		send_kvdata.SetValue(KEY_ClientNum, (int)m_ClientSet.size());
+		send_kvdata.SetValue(KEY_TableNum, m_TableNum);
+
+		IProtocolFactory *protocol_factory = GetProtocolFactory();
+		uint32_t header_size = protocol_factory->HeaderSize();
+		uint32_t body_size = send_kvdata.Size();
+		send_context->CheckSize(header_size+body_size);
+		send_kvdata.Serialize(send_context->Buffer+header_size);
+		send_context->Size = header_size+body_size;
+
+		//Set NumArray
+		int buf_size = sizeof(int)*m_TableNum;
+		send_context->CheckSize(KVData::SizeBytes(buf_size));
+		char *data_buffer = send_context->Buffer+send_context->Size;
+		KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
+		int *num_array = (int*)kv_buffer.second;
+		for(int i=0; i<m_TableNum; ++i)
+			num_array[i] = htonl(m_Tables[i].GetPlayerArray());
+		send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
+		//编译头部
+		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+
+		if(SendProtocol(it->second, send_context) == false)
+		{
+			LOG_ERROR(logger, "OnGetRoomInfo: send GetRoomInfoRsp to framework failed.fd="<<it->second);
+			DeleteProtocolContext(send_context);
+		}
+	}
+}
+
 bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 {
 	int RoomID;
@@ -286,44 +339,8 @@ bool GameRoom::OnGetRoomInfo(int fd, KVData *kvdata)
 		it->second = ClientID;
 	}
 
-	ProtocolContext *send_context = NULL;
-	send_context = NewProtocolContext();
-	assert(send_context != NULL);
-	send_context->type = DTYPE_BIN;
-	send_context->Info = "GetRoomInfoRsp";
+	RoomInfoBroadCast();
 
-	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)GetRoomInfoRsp);
-	send_kvdata.SetValue(KEY_RoomID, RoomID);
-	send_kvdata.SetValue(KEY_ClientNum, (int)m_ClientSet.size());
-	send_kvdata.SetValue(KEY_TableNum, m_TableNum);
-
-	IProtocolFactory *protocol_factory = GetProtocolFactory();
-	uint32_t header_size = protocol_factory->HeaderSize();
-	uint32_t body_size = send_kvdata.Size();
-	send_context->CheckSize(header_size+body_size);
-	send_kvdata.Serialize(send_context->Buffer+header_size);
-	send_context->Size = header_size+body_size;
-
-	//Set NumArray
-	int buf_size = sizeof(int)*m_TableNum;
-	send_context->CheckSize(KVData::SizeBytes(buf_size));
-	char *data_buffer = send_context->Buffer+send_context->Size;
-	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
-	int *num_array = (int*)kv_buffer.second;
-	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
-	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
-
-	//编译头部
-	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-	if(SendProtocol(fd, send_context) == false)
-	{
-		LOG_ERROR(logger, "OnGetRoomInfo: send GetRoomInfoRsp to framework failed.fd="<<fd);
-		DeleteProtocolContext(send_context);
-		return false;
-	}
-	LOG_DEBUG(logger, "OnGetRoomInfo: send IntoRoomRsp to framework succ.cur ClientNum="<<m_ClientSet.size()<<",fd="<<fd);
 	return true;
 }
 
@@ -395,6 +412,8 @@ bool GameRoom::OnAddGame(int fd, KVData *kvdata)
 		std::pair<PlayerMap::iterator, bool> ret = m_PlayerMap.insert(std::make_pair(fd, temp_player));
 		assert(ret.second == true);
 		it = ret.first;
+
+		RoomInfoBroadCast();
 	}
 	Player *player = &it->second;
 	assert(player->table_id == TableID);
@@ -447,6 +466,8 @@ bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
 		assert(player->table_id == TableID);
 		m_Tables[TableID].OnQuitGame(player);
 		m_PlayerMap.erase(fd);
+
+		RoomInfoBroadCast();
 	}
 	else
 	{

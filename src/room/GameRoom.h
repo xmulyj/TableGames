@@ -100,6 +100,8 @@ private:
 	int    m_InterfaceFD;
 
 	void OnAbortQuitGame(Player &player);  //意外退出游戏
+
+	void RoomInfoBroadCast();
 private:
 	DECL_LOGGER(logger);
 };

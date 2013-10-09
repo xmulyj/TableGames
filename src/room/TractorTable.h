@@ -69,6 +69,16 @@ public:
 	bool OnStartGame(Player *player);
 
 	int CurPlayerNum(){return m_CurPlayerNum;}
+
+	//玩家列表:用0,1,2,3位表示,该位为0表示没有玩家,1表示有玩家
+	int GetPlayerArray()
+	{
+		int bitmap = 0;
+		for(int i=0; i<m_PlayerNum; ++i)
+			if(m_Player[i] != NULL)
+				bitmap |= (1<<i);
+		return bitmap;
+	}
 private:
 	int GetPlayerIndex();  //获取玩家的index号
 private:
