@@ -242,6 +242,8 @@ bool TractorTable::OnQuitGame(Player *player)
 			}
 		}
 	}
+
+	AddGameBroadCast(player);
 	return true;
 }
 
