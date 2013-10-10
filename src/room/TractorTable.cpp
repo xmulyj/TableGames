@@ -164,6 +164,9 @@ bool TractorTable::OnAddGame(Player *player)
 		}
 	}
 
+	AddGameBroadCast(player);
+	return true;
+	/*
 	ProtocolContext *send_context = NULL;
 	send_context = m_GameRoom->NewProtocolContext();
 	assert(send_context != NULL);
@@ -214,9 +217,9 @@ bool TractorTable::OnAddGame(Player *player)
 		m_GameRoom->DeleteProtocolContext(send_context);
 		return false;
 	}
-
 	LOG_DEBUG(logger, "OnAddGame: send AddGameRsp to framework succ.ClientName="<<player->client_name<<",ClientID="<<player->client_id<<",fd="<<player->fd);
 	return true;
+	*/
 }
 
 bool TractorTable::OnQuitGame(Player *player)
@@ -273,4 +276,78 @@ bool TractorTable::OnStartGame(Player *player)
 	}
 
 	return true;
+}
+
+void TractorTable::AddGameBroadCast(Player *new_player)
+{
+	LOG_DEBUG(logger, "AddGameBroadCast");
+
+	int index;
+	vector<int> fd_array;
+	for(index=0; index<m_PlayerNum; ++index)
+	{
+		if(m_Player[index] == NULL)
+			continue;
+		fd_array.push_back(m_Player[index]->fd);
+	}
+	PPlayerMap::iterator it;
+	for(it=m_Audience.begin(); it!=m_Audience.end(); ++it)
+		fd_array.push_back(it->second->fd);
+
+	for(index=0; index< fd_array.size(); ++index)
+	{
+		ProtocolContext *send_context = NULL;
+		send_context = m_GameRoom->NewProtocolContext();
+		assert(send_context != NULL);
+		send_context->type = DTYPE_BIN;
+		send_context->Info = "AddGameRsp";
+
+		KVData send_kvdata(true);
+		send_kvdata.SetValue(KEY_Protocol, (int)AddGameRsp);
+		string WelcomeMsg="Player add game:"+new_player->client_name;
+		send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
+		send_kvdata.SetValue(KEY_PlayerNum, m_PlayerNum);
+		send_kvdata.SetValue(KEY_ClientNum, m_CurPlayerNum);
+		send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
+
+		IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
+		uint32_t header_size = protocol_factory->HeaderSize();
+		uint32_t body_size = send_kvdata.Size();
+		send_context->CheckSize(header_size+body_size);
+		send_kvdata.Serialize(send_context->Buffer+header_size);
+		send_context->Size = header_size+body_size;
+
+		//设置NumArray
+		int size_array = sizeof(int)*2*(m_CurPlayerNum+m_Audience.size());
+		send_context->CheckSize(KVData::SizeBytes(size_array));
+
+		KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_NumArray, true);
+		int *num_array = (int*)kv_buf.second;
+		for(int i=0; i<m_PlayerNum; ++i)
+		{
+			if(m_Player[i] == NULL)
+				continue;
+			*num_array++ = htonl(m_Player[i]->client_id);
+			*num_array++ = htonl((int)m_Player[i]->status);
+		}
+		for(PPlayerMap::iterator it=m_Audience.begin(); it!=m_Audience.end(); ++it)
+		{
+			*num_array++ = htonl(it->second->client_id);
+			*num_array++ = htonl(it->second->status);
+		}
+
+		send_context->Size += KVData::EndWrite(kv_buf, size_array);
+
+		//编译头部
+		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+		if(m_GameRoom->SendProtocol(fd_array[index], send_context) == false)
+		{
+			LOG_ERROR(logger, "OnAddGameBroadCast: send AddGameRsp to framework failed.fd="<<fd_array[index]);
+			m_GameRoom->DeleteProtocolContext(send_context);
+		}
+		else
+		{
+			LOG_DEBUG(logger, "OnAddGameBroadCast: send AddGameRsp to framework succ.fd="<<fd_array[index]);
+		}
+	}
 }

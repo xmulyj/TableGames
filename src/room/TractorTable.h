@@ -81,6 +81,8 @@ public:
 	}
 private:
 	int GetPlayerIndex();  //获取玩家的index号
+
+	void AddGameBroadCast(Player *new_player);  //广播有用户进入游戏桌子
 private:
 	GameRoom*            m_GameRoom;       //游戏房间
 	int                  m_TableID;        //桌号
