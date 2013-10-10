@@ -254,7 +254,7 @@ void GameRoom::RoomInfoBroadCast()
 	//广播房间信息
 	for(it=m_FDClientMap.begin(); it!=m_FDClientMap.end(); ++it)
 	{
-		if(m_PlayerMap.find(it->second) != m_PlayerMap.end())
+		if(m_PlayerMap.find(it->first) != m_PlayerMap.end())
 			continue;
 
 		ProtocolContext *send_context = NULL;
@@ -289,11 +289,13 @@ void GameRoom::RoomInfoBroadCast()
 		//编译头部
 		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
 
-		if(SendProtocol(it->second, send_context) == false)
+		if(SendProtocol(it->first, send_context) == false)
 		{
-			LOG_ERROR(logger, "OnGetRoomInfo: send GetRoomInfoRsp to framework failed.fd="<<it->second);
+			LOG_ERROR(logger, "RoomInfoBroadCast: send GetRoomInfoRsp to framework failed.fd="<<it->first);
 			DeleteProtocolContext(send_context);
 		}
+		else
+			LOG_DEBUG(logger, "RoomInfoBroadCast: sent GetRoomInfoRsp to framework succ. fd="<<it->first);
 	}
 }
 
@@ -412,12 +414,12 @@ bool GameRoom::OnAddGame(int fd, KVData *kvdata)
 		std::pair<PlayerMap::iterator, bool> ret = m_PlayerMap.insert(std::make_pair(fd, temp_player));
 		assert(ret.second == true);
 		it = ret.first;
-
-		RoomInfoBroadCast();
 	}
 	Player *player = &it->second;
 	assert(player->table_id == TableID);
-	return m_Tables[TableID].OnAddGame(player);
+	bool ret = m_Tables[TableID].OnAddGame(player);
+	RoomInfoBroadCast();
+	return ret;
 }
 
 bool GameRoom::OnQuitGame(int fd, KVData *kvdata)
