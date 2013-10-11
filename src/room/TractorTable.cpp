@@ -165,7 +165,7 @@ bool TractorTable::OnAddGame(Player *player)
 	}
 
 	char buffer[100];
-	snprintf(buffer, 100, "Player:%d add game", player->client_id);
+	snprintf(buffer, 100, "Player[uid=%d] add game", player->client_id);
 	string msg(buffer);
 	TableInfoBroadCast(msg);
 	return true;
@@ -232,7 +232,7 @@ bool TractorTable::OnQuitGame(Player *player)
 	if(player->status == STATUS_AUDIENCE)
 	{
 		m_Audience.erase(player->client_id);
-		snprintf(buffer, 100, "Audience:%d leave table", player->client_id);
+		snprintf(buffer, 100, "Audience[uid=%d] leave table", player->client_id);
 	}
 	else
 	{
@@ -247,7 +247,7 @@ bool TractorTable::OnQuitGame(Player *player)
 				m_Player[i]->poker.clear();
 			}
 		}
-		snprintf(buffer, 100, "Player:%d leave table", player->client_id);
+		snprintf(buffer, 100, "Player[uid=%d] leave table", player->client_id);
 	}
 
 	string msg(buffer);
@@ -317,7 +317,7 @@ void TractorTable::TableInfoBroadCast(string &msg)
 		send_kvdata.SetValue(KEY_Protocol, (int)PRO_TableInfoBroadCast);
 		send_kvdata.SetValue(KEY_Message, msg);
 		send_kvdata.SetValue(KEY_NeedNum, m_PlayerNum);
-		send_kvdata.SetValue(KEY_ClientNum, m_CurPlayerNum);
+		send_kvdata.SetValue(KEY_PlayerNum, m_CurPlayerNum);
 		send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
 
 		IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
