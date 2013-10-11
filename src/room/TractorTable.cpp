@@ -261,6 +261,12 @@ bool TractorTable::OnStartGame(Player *player)
 	assert(player->table_id==m_TableID && m_Player[player->index]==player && player->status==STATUS_WAIT);
 	player->status = STATUS_PLAYING;
 
+
+	char buffer[100];
+	snprintf(buffer, 100, "Player[uid=%d] start game.", player->client_id);
+	string msg(buffer);
+	TableInfoBroadCast(msg);
+
 	//判断所有的玩家是否都是PLAYING状态
 	int i;
 	for(i=0; i<m_PlayerNum; ++i)
