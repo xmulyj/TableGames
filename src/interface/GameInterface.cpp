@@ -86,13 +86,13 @@ bool GameInterface::OnReceiveProtocol(int32_t fd, ProtocolContext *context, bool
 
 	switch(protocol)
 	{
-	case ReportRoomInfo:
+	case PRO_ReportRoomInfo:
 		return OnReportRoomInfo(fd, kvdata);
 		break;
-	case GetAllRoom:
-		return OnGetAllRoom(fd, kvdata);
+	case PRO_GetRoomList:
+		return OnGetRoomList(fd, kvdata);
 		break;
-	case GetRoomAddr:
+	case PRO_GetRoomAddr:
 		return OnGetRoomAddr(fd, kvdata);
 		break;
 	default:
@@ -209,7 +209,7 @@ bool GameInterface::OnReportRoomInfo(int fd, KVData *kvdata)
 		return false;
 	}
 
-	if(!kvdata->GetValue(KEY_NumArray, NumArray, ArrayCount))
+	if(!kvdata->GetValue(KEY_Array, NumArray, ArrayCount))
 	{
 		LOG_ERROR(logger, "OnReportRoomInfo: get NumArray failed. fd="<<fd);
 		return false;
@@ -253,21 +253,21 @@ bool GameInterface::OnReportRoomInfo(int fd, KVData *kvdata)
 	return true;
 }
 
-bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
+bool GameInterface::OnGetRoomList(int fd, KVData *kvdata)
 {
 	uint32_t ClientID;
 	string   ClientName;
 	if(!kvdata->GetValue(KEY_ClientID, ClientID))
 	{
-		LOG_ERROR(logger, "OnReportRoomInfo: get ClientID failed. fd="<<fd);
+		LOG_ERROR(logger, "OnGetRoomList: get ClientID failed. fd="<<fd);
 		return false;
 	}
 	if(!kvdata->GetValue(KEY_ClientName, ClientName))
 	{
-		LOG_ERROR(logger, "OnReportRoomInfo: get ClientName failed. fd="<<fd);
+		LOG_ERROR(logger, "OnGetRoomList: get ClientName failed. fd="<<fd);
 		return false;
 	}
-	LOG_DEBUG(logger, "OnGetAllRoom: ClientID="<<ClientID
+	LOG_DEBUG(logger, "OnGetRoomList: ClientID="<<ClientID
 			<<", ClientName="<<ClientName
 			<<",fd="<<fd);
 
@@ -275,10 +275,10 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 	send_context = NewProtocolContext();
 	assert(send_context != NULL);
 	send_context->type = DTYPE_BIN;
-	send_context->Info = "GetAllRoomRsp";
+	send_context->Info = "GetRoomListRsp";
 
 	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)GetAllRoomRsp);
+	send_kvdata.SetValue(KEY_Protocol, (int)PRO_GetRoomListRsp);
 	send_kvdata.SetValue(KEY_RoomNum, (int)m_RoomInfoMap.size());
 
 	IProtocolFactory *protocol_factory = GetProtocolFactory();
@@ -294,7 +294,7 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 		send_context->CheckSize(KVData::SizeBytes(buf_size));
 
 		char *data_buffer = send_context->Buffer+send_context->Size;
-		KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_NumArray, true);
+		KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_Array, true);
 		int *num_array = (int*)kv_buffer.second;
 
 		RoomInfoMap::iterator it;
@@ -315,7 +315,7 @@ bool GameInterface::OnGetAllRoom(int fd, KVData *kvdata)
 		DeleteProtocolContext(send_context);
 		return false;
 	}
-	LOG_DEBUG(logger, "send GetAllRoomRsp to framework succ.fd="<<fd);
+	LOG_DEBUG(logger, "send GetRoomListRsp to framework succ.fd="<<fd);
 	return true;
 }
 
@@ -342,7 +342,7 @@ bool GameInterface::OnGetRoomAddr(int fd, KVData *kvdata)
 
 
 	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)GetRoomAddrRsp);
+	send_kvdata.SetValue(KEY_Protocol, (int)PRO_GetRoomAddrRsp);
 	send_kvdata.SetValue(KEY_RoomID, RoomID);
 
 	RoomInfoMap::iterator it = m_RoomInfoMap.find(RoomID);

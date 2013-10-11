@@ -93,7 +93,7 @@ private:  //IEventHandler接口方法
 private:
 	void CheckRoomStatus();
 	bool OnReportRoomInfo(int fd, KVData *kvdata);
-	bool OnGetAllRoom(int fd, KVData *kvdata);
+	bool OnGetRoomList(int fd, KVData *kvdata);
 	bool OnGetRoomAddr(int fd, KVData *kvdata);
 private:
 	RoomInfoMap m_RoomInfoMap;

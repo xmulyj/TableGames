@@ -89,9 +89,9 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 			num_array.assign((const char*)poker, sizeof(int)*status);
 
 		KVData send_kvdata(true);
-		send_kvdata.SetValue(KEY_Protocol, DealPoker);
+		send_kvdata.SetValue(KEY_Protocol, PRO_DealPokerBroadCast);
 		send_kvdata.SetValue(KEY_Status, status);
-		send_kvdata.SetValue(KEY_NumArray, num_array);
+		send_kvdata.SetValue(KEY_Array, num_array);
 
 
 		ProtocolContext *send_context = NULL;
@@ -164,8 +164,12 @@ bool TractorTable::OnAddGame(Player *player)
 		}
 	}
 
-	AddGameBroadCast(player);
+	char buffer[100];
+	snprintf(buffer, 100, "Player:%d add game", player->client_id);
+	string msg(buffer);
+	TableInfoBroadCast(msg);
 	return true;
+
 	/*
 	ProtocolContext *send_context = NULL;
 	send_context = m_GameRoom->NewProtocolContext();
@@ -224,9 +228,11 @@ bool TractorTable::OnAddGame(Player *player)
 
 bool TractorTable::OnQuitGame(Player *player)
 {
+	char buffer[100];
 	if(player->status == STATUS_AUDIENCE)
 	{
 		m_Audience.erase(player->client_id);
+		snprintf(buffer, 100, "Audience:%d leave table", player->client_id);
 	}
 	else
 	{
@@ -241,9 +247,12 @@ bool TractorTable::OnQuitGame(Player *player)
 				m_Player[i]->poker.clear();
 			}
 		}
+		snprintf(buffer, 100, "Player:%d leave table", player->client_id);
 	}
 
-	AddGameBroadCast(player);
+	string msg(buffer);
+	TableInfoBroadCast(msg);
+
 	return true;
 }
 
@@ -280,9 +289,9 @@ bool TractorTable::OnStartGame(Player *player)
 	return true;
 }
 
-void TractorTable::AddGameBroadCast(Player *new_player)
+void TractorTable::TableInfoBroadCast(string &msg)
 {
-	LOG_DEBUG(logger, "AddGameBroadCast");
+	LOG_DEBUG(logger, "TableInfoBroadCast");
 
 	int index;
 	vector<int> fd_array;
@@ -302,13 +311,12 @@ void TractorTable::AddGameBroadCast(Player *new_player)
 		send_context = m_GameRoom->NewProtocolContext();
 		assert(send_context != NULL);
 		send_context->type = DTYPE_BIN;
-		send_context->Info = "AddGameRsp";
+		send_context->Info = "TableInfoBroadCast";
 
 		KVData send_kvdata(true);
-		send_kvdata.SetValue(KEY_Protocol, (int)AddGameRsp);
-		string WelcomeMsg="Player add game:"+new_player->client_name;
-		send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
-		send_kvdata.SetValue(KEY_PlayerNum, m_PlayerNum);
+		send_kvdata.SetValue(KEY_Protocol, (int)PRO_TableInfoBroadCast);
+		send_kvdata.SetValue(KEY_Message, msg);
+		send_kvdata.SetValue(KEY_NeedNum, m_PlayerNum);
 		send_kvdata.SetValue(KEY_ClientNum, m_CurPlayerNum);
 		send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
 
@@ -323,7 +331,7 @@ void TractorTable::AddGameBroadCast(Player *new_player)
 		int size_array = sizeof(int)*2*(m_CurPlayerNum+m_Audience.size());
 		send_context->CheckSize(KVData::SizeBytes(size_array));
 
-		KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_NumArray, true);
+		KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_Array, true);
 		int *num_array = (int*)kv_buf.second;
 		for(int i=0; i<m_PlayerNum; ++i)
 		{
@@ -344,12 +352,12 @@ void TractorTable::AddGameBroadCast(Player *new_player)
 		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
 		if(m_GameRoom->SendProtocol(fd_array[index], send_context) == false)
 		{
-			LOG_ERROR(logger, "OnAddGameBroadCast: send AddGameRsp to framework failed.fd="<<fd_array[index]);
+			LOG_ERROR(logger, "TableInfoBroadCast: send TableInfoBroadCast to framework failed.fd="<<fd_array[index]);
 			m_GameRoom->DeleteProtocolContext(send_context);
 		}
 		else
 		{
-			LOG_DEBUG(logger, "OnAddGameBroadCast: send AddGameRsp to framework succ.fd="<<fd_array[index]);
+			LOG_DEBUG(logger, "TableInfoBroadCast: send TableInfoBroadCast to framework succ.fd="<<fd_array[index]);
 		}
 	}
 }

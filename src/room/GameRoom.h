@@ -78,7 +78,8 @@ private:  //IEventHandler接口方法
 	//可写事件
 	ERROR_CODE OnEventWrite(int32_t fd, uint64_t nowtime_ms){return ECODE_SUCC;}
 private:
-	bool OnGetRoomInfo(int fd, KVData *kvdata);
+	bool OnIntoRoom(int fd, KVData *kvdata);
+	bool OnLeaveRoom(int fd, KVData *kvdata);
 	bool OnAddGame(int fd, KVData *kvdata);
 	bool OnQuitGame(int fd, KVData *kvdata);
 	bool OnStartGame(int fd, KVData *kvdata);
