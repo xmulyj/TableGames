@@ -23,8 +23,9 @@
 #define PRO_AddGame             8
 #define PRO_QuitGame            9
 #define PRO_StartGame           10
-#define PRO_TableInfoBroadCast  11
-#define PRO_DealPokerBroadCast  12
+#define PRO_DealPoker           11
+#define PRO_TableInfoBroadCast  12
+
 
 //KeyName Define
 //////////////////////////////
@@ -44,5 +45,6 @@
 #define KEY_PlayerNum       13
 #define KEY_AudienceNum     14
 #define KEY_NeedNum         15
+#define KEY_CardFlag        16
 
 #endif /* KEYDEFINE_H_ */

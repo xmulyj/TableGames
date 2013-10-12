@@ -50,7 +50,7 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 			return ;
 	}
 
-	bool finished = false;
+	bool finished = false;  //最后一轮
 	int start = m_Dealer<0?0:m_Dealer;  //从庄家开始发牌
 	for(i=0; i<m_PlayerNum; ++i)
 	{
@@ -67,53 +67,72 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 	}
 
 	int poker[20];
+	int CardFlag = 0;
 	for(i=0; i<m_PlayerNum; ++i)
 	{
-		int status = 0;
 		poker[0] = htonl(m_Player[i]->poker.back());
-		if(finished)
+		if(finished)  //最后一轮
 		{
-			status = 1;
-			if(i == m_Dealer)
+			CardFlag = 1;
+			if(i == m_Dealer)  //给庄家发底牌
 			{
-				status = 1+m_KeepPokerNum;
+				CardFlag = 1+m_KeepPokerNum;
 				int index = m_Player[i]->poker.size()-1;
 				for(int j=1; j<=m_KeepPokerNum;++j)
 					poker[j] = htonl(m_Player[i]->poker[--index]);
 			}
 		}
+
 		string num_array;
-		if(status==0 || status==1)
+		if(CardFlag == 0)
 			num_array.assign((const char*)poker, sizeof(int));
 		else
-			num_array.assign((const char*)poker, sizeof(int)*status);
+			num_array.assign((const char*)poker, sizeof(int)*CardFlag);
 
 		KVData send_kvdata(true);
-		send_kvdata.SetValue(KEY_Protocol, PRO_DealPokerBroadCast);
-		send_kvdata.SetValue(KEY_Status, status);
-		send_kvdata.SetValue(KEY_Array, num_array);
+		send_kvdata.SetValue(KEY_Protocol, PRO_DealPoker);
+		send_kvdata.SetValue(KEY_CardFlag, CardFlag);
 
-
-		ProtocolContext *send_context = NULL;
-		send_context = m_GameRoom->NewProtocolContext();
-		assert(send_context != NULL);
-		send_context->type = DTYPE_BIN;
-		send_context->Info = "DealPoker";
-
-		IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
-		uint32_t header_size = protocol_factory->HeaderSize();
-		uint32_t body_size = send_kvdata.Size();
-		send_context->CheckSize(header_size+body_size);
-		send_kvdata.Serialize(send_context->Buffer+header_size);
-		send_context->Size = header_size+body_size;
-
-		//编译头部
-		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-		if(m_GameRoom->SendProtocol(m_Player[i]->fd, send_context) == false)
+		//先给所有的旁观者发送信息(没有包含扑克牌)
+		PPlayerMap::iterator it = m_Audience.begin();
+		int fd=-1;
+		while(true)
 		{
-			LOG_ERROR(logger, "OnAddGame: send DealPoker to framework failed. player="<<m_Player[i]->index<<".fd="<<m_Player[i]->fd);
-			m_GameRoom->DeleteProtocolContext(send_context);
-			assert(0);
+			if(it != m_Audience.end())
+				fd = it->second->fd;
+			else  //添加扑克牌,给玩家发送消息
+			{
+				fd = m_Player[i]->fd;
+				send_kvdata.SetValue(KEY_Array, num_array);
+			}
+
+			ProtocolContext *send_context = NULL;
+			send_context = m_GameRoom->NewProtocolContext();
+			assert(send_context != NULL);
+			send_context->type = DTYPE_BIN;
+			send_context->Info = "DealPoker";
+
+			IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
+			uint32_t header_size = protocol_factory->HeaderSize();
+			uint32_t body_size = send_kvdata.Size();
+			send_context->CheckSize(header_size+body_size);
+			send_kvdata.Serialize(send_context->Buffer+header_size);
+			send_context->Size = header_size+body_size;
+
+			//编译头部
+			protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+			if(m_GameRoom->SendProtocol(fd, send_context) == false)
+			{
+				if(it == m_Audience.end())
+					LOG_ERROR(logger, "OnTimeout: send DealPoker to framework failed. Player:client_id=="<<m_Player[i]->client_id<<".fd="<<fd);
+				else
+					LOG_ERROR(logger, "OnTimeout: send DealPoker to framework failed. Audience:client_id="<<it->second->client_id<<".fd="<<fd);
+				m_GameRoom->DeleteProtocolContext(send_context);
+				//assert(0);
+			}
+
+			if(it == m_Audience.end())
+				break;
 		}
 	}
 
