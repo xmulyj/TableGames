@@ -25,7 +25,7 @@ TractorTable::TractorTable(GameRoom *game_room, int table_id, int n_poker/*=1*/,
 	for(int i=0; i<10; ++i)
 		m_Player[i] = NULL;
 	m_CurPlayerNum = 0;
-	m_Dealer = -1;
+	m_Dealer = 0;
 
 	if(n_poker%2 == 1)
 		m_KeepPokerNum = 6;
@@ -37,10 +37,14 @@ TractorTable::TractorTable(GameRoom *game_room, int table_id, int n_poker/*=1*/,
 //时钟超时
 void TractorTable::OnTimeout(uint64_t nowtime_ms)
 {
-	LOG_DEBUG(logger, "OnTimeout: TableID="<<m_TableID);
-
 	if(m_CurPlayerNum < m_PlayerNum)
+	{
+		LOG_DEBUG(logger, "Table OnTimeout but player no enough.TableID="<<m_TableID);
 		return ;
+	}
+
+
+	LOG_DEBUG(logger, "Table OnTimeout: TableID="<<m_TableID<<",remain poker="<<m_Poker.Remain());
 
 	int i;
 	for(i=0; i<m_PlayerNum; ++i)
@@ -301,6 +305,7 @@ bool TractorTable::OnStartGame(Player *player)
 		for(i=0; i<m_PlayerNum; ++i)
 			m_Player[i]->poker.clear();
 
+		m_Poker.Shuffle();
 		//启动时钟开始发牌
 		IEventServer *event_server = m_GameRoom->GetEventServer();
 		if(!event_server->AddTimer(this, DEAL_TIMEOUT, false))
@@ -308,7 +313,7 @@ bool TractorTable::OnStartGame(Player *player)
 			LOG_ERROR(logger, "OnStartGame: all player are ready but add deal timer failed. TableID="<<m_TableID<<". fd="<<player->fd);
 			assert(0);
 		}
-		LOG_INFO(logger, "OnStartGame: all player are ready add deal timer succ. TableID="<<m_TableID<<". fd="<<player->fd);
+		LOG_INFO(logger, "OnStartGame: all player are ready and add deal timer succ. TableID="<<m_TableID<<". fd="<<player->fd);
 	}
 
 	return true;

@@ -24,6 +24,7 @@ void Poker::Shuffle()
 {
 	srand(time(NULL));
 
+	m_Poker.clear();
 	int poker[54];
 	for(int i=0; i<m_N; ++i)
 	{
