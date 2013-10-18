@@ -22,9 +22,9 @@ typedef struct _room_info
 	int         RoomID;
 	string      RoomIP;
 	int         RoomPort;
-	int         ClientNum;  //玩家+游客总数
+	int         ClientNum;  //所有用户数(玩家+观众+游客)
+	int         PlayerNum;	//玩家数量
 	int         TableNum;   //桌子数
-	vector<int> NumArray;   //每桌玩家个数
 
 	int32_t     TimeStamp;  //更新的时间戳
 }RoomInfo;

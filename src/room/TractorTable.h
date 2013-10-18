@@ -68,7 +68,7 @@ public:
 	bool OnQuitGame(Player *player);
 	bool OnStartGame(Player *player);
 
-	int CurPlayerNum(){return m_CurPlayerNum;}
+	int CurPlayerNum(){return m_PlayerNum;}
 
 	//玩家列表:用0,1,2,3位表示,该位为0表示没有玩家,1表示有玩家
 	int GetPlayerArray()
@@ -81,18 +81,30 @@ public:
 	}
 private:
 	int GetPlayerIndex();  //获取玩家的index号
-	void TableInfoBroadCast(string &msg);  //广播有用户进入游戏桌子
+	void SendAddGameRsp(int fd, string &msg);  //广播有用户进入游戏桌子
+	void AddGameBroadCast(Player *player);     //向桌内其他玩家广播消息
+	void QuitGameBroadCast(Player *player);   //向桌内其他玩家广播消息
+	void StartGameBroadCast(Player *player);   //向桌内其他玩家广播消息
 private:
 	GameRoom*            m_GameRoom;       //游戏房间
 	int                  m_TableID;        //桌号
-	int                  m_PlayerNum;      //玩家个数
+	int                  m_NeedNum;        //游戏所需玩家个数
 
 	Poker                m_Poker;          //扑克
-	int                  m_CurPlayerNum;   //当前玩家个数
+	int                  m_PlayerNum;      //当前玩家个数
 	Player*              m_Player[10];     //玩家
 	PPlayerMap           m_Audience;       //旁观者
 	int                  m_Dealer;         //庄家的号码
 	int                  m_KeepPokerNum;   //底牌张数
+	int                  m_CulLevel;       //当前级别
+	int                  m_PokerNum;       //当前还剩扑克牌数量
+
+	//(0~3bit)当前主花色:
+	//-1:未设置;0:红心;1:黑桃;2:方块:3:草花;4小王;5大王
+	//(4~bit)当前花色数量;
+	int                  m_CulColor;
+	vector<int>          m_Score;          //当前分数
+
 private:
 	DECL_LOGGER(logger);
 };

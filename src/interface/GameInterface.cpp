@@ -180,9 +180,6 @@ bool GameInterface::OnReportRoomInfo(int fd, KVData *kvdata)
 {
 	RoomInfo room_info;
 
-	uint32_t ArrayCount;
-	char     *NumArray;
-
 	if(!kvdata->GetValue(KEY_RoomID, room_info.RoomID))
 	{
 		LOG_ERROR(logger, "OnReportRoomInfo: get RoomID failed. fd="<<fd);
@@ -203,29 +200,15 @@ bool GameInterface::OnReportRoomInfo(int fd, KVData *kvdata)
 		LOG_ERROR(logger, "OnReportRoomInfo: get ClientNum failed. fd="<<fd);
 		return false;
 	}
+	if(!kvdata->GetValue(KEY_PlayerNum, room_info.PlayerNum))
+	{
+		LOG_ERROR(logger, "OnReportRoomInfo: get PlayerNum failed. fd="<<fd);
+		return false;
+	}
 	if(!kvdata->GetValue(KEY_TableNum, room_info.TableNum))
 	{
 		LOG_ERROR(logger, "OnReportRoomInfo: get TableNum failed. fd="<<fd);
 		return false;
-	}
-
-	if(!kvdata->GetValue(KEY_Array, NumArray, ArrayCount))
-	{
-		LOG_ERROR(logger, "OnReportRoomInfo: get NumArray failed. fd="<<fd);
-		return false;
-	}
-	ArrayCount /= sizeof(int);
-	if(ArrayCount != room_info.TableNum)
-	{
-		LOG_ERROR(logger, "OnReportRoomInfo: ArrayCount Invalid. ArrayCount="<<ArrayCount
-				<<",TableNum"<<room_info.TableNum
-				<<", fd="<<fd);
-		return false;
-	}
-	for(int i=0;i<room_info.TableNum; ++i)
-	{
-		NumArray[i] = ntohl(NumArray[i]);
-		room_info.NumArray.push_back(NumArray[i]);
 	}
 
 	LOG_DEBUG(logger, "OnReportRoomInfo: fd="<<fd
@@ -233,6 +216,7 @@ bool GameInterface::OnReportRoomInfo(int fd, KVData *kvdata)
 			<<",RoomIP="<<room_info.RoomIP
 			<<",RoomPort="<<room_info.RoomPort
 			<<",ClientNum="<<room_info.ClientNum
+			<<",PlayerNum="<<room_info.PlayerNum
 			<<",TableNum="<<room_info.TableNum);
 
 	room_info.TimeStamp = (uint32_t)time(NULL);

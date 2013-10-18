@@ -38,11 +38,11 @@ bool GameRoom::Start()
 	m_PackNum = gConfigReader.GetValue("PackNum", -1);
 	assert(m_PackNum > 0);
 
-	m_PlayerNum = 4;  //游戏需要几个玩家
+	m_NeedNum = 4;  //游戏需要几个玩家
 
 	for(int i=0; i<m_TableNum; ++i)
 	{
-		TractorTable table(this, i, m_PackNum, m_PlayerNum);
+		TractorTable table(this, i, m_PackNum, m_NeedNum);
 		m_Tables.push_back(table);
 	}
 
@@ -206,11 +206,14 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 		LOG_INFO(logger, "connect to GameInterface succ. Interface="<<m_InterfaceIP<<":"<<m_InterfacePort<<", fd="<<m_InterfaceFD);
 	}
 
-	ProtocolContext *send_context = NULL;
-	send_context = NewProtocolContext();
-	assert(send_context != NULL);
-	send_context->type = DTYPE_BIN;
-	send_context->Info = "ReportRoomInfo";
+	//计算玩家数量
+	int PlayerNum=0;
+	PlayerMap::iterator it;
+	for(it=m_PlayerMap.begin(); it!=m_PlayerMap.end(); ++it)
+	{
+		if(it->second.status == STATUS_PLAYING)
+			++PlayerNum;
+	}
 
 	KVData send_kvdata(true);
 	send_kvdata.SetValue(KEY_Protocol, (int)PRO_ReportRoomInfo);
@@ -218,7 +221,14 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	send_kvdata.SetValue(KEY_RoomIP, m_IP);
 	send_kvdata.SetValue(KEY_RoomPort, m_Port);
 	send_kvdata.SetValue(KEY_ClientNum,(int)m_ClientSet.size());
+	send_kvdata.SetValue(KEY_PlayerNum, PlayerNum);
 	send_kvdata.SetValue(KEY_TableNum, m_TableNum);
+
+
+	ProtocolContext *send_context = NewProtocolContext();
+	assert(send_context != NULL);
+	send_context->type = DTYPE_BIN;
+	send_context->Info = "ReportRoomInfo";
 
 	IProtocolFactory *protocol_factory = GetProtocolFactory();
 	uint32_t header_size = protocol_factory->HeaderSize();
@@ -226,16 +236,6 @@ void GameRoom::OnTimeout(uint64_t nowtime_ms)
 	send_context->CheckSize(header_size+body_size);
 	send_kvdata.Serialize(send_context->Buffer+header_size);
 	send_context->Size = header_size+body_size;
-
-	//Set NumArray
-	int buf_size = sizeof(int)*m_TableNum;
-	send_context->CheckSize(KVData::SizeBytes(buf_size));
-	char *data_buffer = send_context->Buffer+send_context->Size;
-	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_Array, true);
-	char *num_array = kv_buffer.second;
-	for(int i=0; i<m_TableNum; ++i)
-		num_array[i] = htonl(m_Tables[i].CurPlayerNum());
-	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
 
 	//编译头部
 	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
@@ -293,7 +293,7 @@ bool GameRoom::OnIntoRoom(int fd, KVData *kvdata)
 		it->second = ClientID;
 	}
 
-	RoomInfoBroadCast();
+	SendRoomInfo(fd);
 	return true;
 }
 
@@ -335,10 +335,54 @@ bool GameRoom::OnLeaveRoom(int fd, KVData *kvdata)
 		m_FDClientMap.erase(it);
 	}
 
-	RoomInfoBroadCast();
+	//RoomInfoBroadCast();
 	//关闭连接
 	NotifySocketFinish(fd);
 	return true;
+}
+
+void GameRoom::SendRoomInfo(int fd)
+{
+	ProtocolContext *send_context = NULL;
+	send_context = NewProtocolContext();
+	assert(send_context != NULL);
+	send_context->type = DTYPE_BIN;
+	send_context->Info = "RoomInfo";
+
+	KVData send_kvdata(true);
+	send_kvdata.SetValue(KEY_Protocol, (int)PRO_RoomInfoBroadCast);
+	send_kvdata.SetValue(KEY_RoomID, m_ID);
+	send_kvdata.SetValue(KEY_NeedNum, m_NeedNum);
+	send_kvdata.SetValue(KEY_ClientNum, (int)m_ClientSet.size());
+	send_kvdata.SetValue(KEY_TableNum, m_TableNum);
+
+	IProtocolFactory *protocol_factory = GetProtocolFactory();
+	uint32_t header_size = protocol_factory->HeaderSize();
+	uint32_t body_size = send_kvdata.Size();
+	send_context->CheckSize(header_size+body_size);
+	send_kvdata.Serialize(send_context->Buffer+header_size);
+	send_context->Size = header_size+body_size;
+
+	//Set NumArray
+	int buf_size = sizeof(int)*m_TableNum;
+	send_context->CheckSize(KVData::SizeBytes(buf_size));
+	char *data_buffer = send_context->Buffer+send_context->Size;
+	KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_Array, true);
+	int *num_array = (int*)kv_buffer.second;
+	for(int i=0; i<m_TableNum; ++i)
+		num_array[i] = htonl(m_Tables[i].GetPlayerArray());
+	send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
+	//编译头部
+	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+
+	if(SendProtocol(fd, send_context) == false)
+	{
+		LOG_ERROR(logger, "RoomInfoBroadCast: send GetRoomInfoRsp to framework failed.fd="<<fd);
+		DeleteProtocolContext(send_context);
+	}
+	else
+		LOG_DEBUG(logger, "RoomInfoBroadCast: sent GetRoomInfoRsp to framework succ. fd="<<fd);
+
 }
 
 void GameRoom::RoomInfoBroadCast()
@@ -349,48 +393,9 @@ void GameRoom::RoomInfoBroadCast()
 	//广播房间信息
 	for(it=m_FDClientMap.begin(); it!=m_FDClientMap.end(); ++it)
 	{
-		if(m_PlayerMap.find(it->first) != m_PlayerMap.end())
+		if(m_PlayerMap.find(it->first) != m_PlayerMap.end())  //在房间但没有选择桌子的用户
 			continue;
-
-		ProtocolContext *send_context = NULL;
-		send_context = NewProtocolContext();
-		assert(send_context != NULL);
-		send_context->type = DTYPE_BIN;
-		send_context->Info = "RoomInfoBroadCast";
-
-		KVData send_kvdata(true);
-		send_kvdata.SetValue(KEY_Protocol, (int)PRO_RoomInfoBroadCast);
-		send_kvdata.SetValue(KEY_RoomID, m_ID);
-		send_kvdata.SetValue(KEY_NeedNum, m_PlayerNum);
-		send_kvdata.SetValue(KEY_ClientNum, (int)m_ClientSet.size());
-		send_kvdata.SetValue(KEY_TableNum, m_TableNum);
-
-		IProtocolFactory *protocol_factory = GetProtocolFactory();
-		uint32_t header_size = protocol_factory->HeaderSize();
-		uint32_t body_size = send_kvdata.Size();
-		send_context->CheckSize(header_size+body_size);
-		send_kvdata.Serialize(send_context->Buffer+header_size);
-		send_context->Size = header_size+body_size;
-
-		//Set NumArray
-		int buf_size = sizeof(int)*m_TableNum;
-		send_context->CheckSize(KVData::SizeBytes(buf_size));
-		char *data_buffer = send_context->Buffer+send_context->Size;
-		KVBuffer kv_buffer = KVData::BeginWrite(data_buffer, KEY_Array, true);
-		int *num_array = (int*)kv_buffer.second;
-		for(int i=0; i<m_TableNum; ++i)
-			num_array[i] = htonl(m_Tables[i].GetPlayerArray());
-		send_context->Size += KVData::EndWrite(kv_buffer, buf_size);
-		//编译头部
-		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-
-		if(SendProtocol(it->first, send_context) == false)
-		{
-			LOG_ERROR(logger, "RoomInfoBroadCast: send GetRoomInfoRsp to framework failed.fd="<<it->first);
-			DeleteProtocolContext(send_context);
-		}
-		else
-			LOG_DEBUG(logger, "RoomInfoBroadCast: sent GetRoomInfoRsp to framework succ. fd="<<it->first);
+		SendRoomInfo(it->first);
 	}
 }
 
