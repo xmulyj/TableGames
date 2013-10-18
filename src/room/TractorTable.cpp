@@ -19,12 +19,12 @@ IMPL_LOGGER(TractorTable, logger);
 TractorTable::TractorTable(GameRoom *game_room, int table_id, int n_poker/*=1*/, int n_player/*=4*/)
 	:m_GameRoom(game_room)
 	,m_Poker(n_poker)
-	,m_PlayerNum(n_player)
+	,m_NeedNum(n_player)
 	,m_TableID(table_id)
 {
 	for(int i=0; i<10; ++i)
 		m_Player[i] = NULL;
-	m_CurPlayerNum = 0;
+	m_PlayerNum = 0;
 	m_Dealer = 0;
 
 	if(n_poker%2 == 1)
@@ -37,7 +37,7 @@ TractorTable::TractorTable(GameRoom *game_room, int table_id, int n_poker/*=1*/,
 //时钟超时
 void TractorTable::OnTimeout(uint64_t nowtime_ms)
 {
-	if(m_CurPlayerNum < m_PlayerNum)
+	if(m_PlayerNum < m_NeedNum)
 	{
 		LOG_DEBUG(logger, "Table OnTimeout but player no enough.TableID="<<m_TableID);
 		return ;
@@ -47,7 +47,7 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 	LOG_DEBUG(logger, "Table OnTimeout: TableID="<<m_TableID<<",remain poker="<<m_Poker.Remain());
 
 	int i;
-	for(i=0; i<m_PlayerNum; ++i)
+	for(i=0; i<m_NeedNum; ++i)
 	{
 		assert(m_Player[i] != NULL);
 		if(m_Player[i]->status != STATUS_PLAYING)
@@ -60,6 +60,7 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 	{
 		m_Player[start]->poker.push_back(m_Poker.Deal());
 		start = (start+1)%m_PlayerNum;
+		++m_PokerNum;
 	}
 
 	//庄家获得N张底牌
@@ -155,26 +156,25 @@ void TractorTable::OnTimeout(uint64_t nowtime_ms)
 
 int TractorTable::GetPlayerIndex()
 {
-	if(m_CurPlayerNum >= m_PlayerNum)
+	if(m_PlayerNum >= m_NeedNum)
 		return -1;
-	for(int i=0; i<m_PlayerNum; ++i)
+	for(int i=0; i<m_NeedNum; ++i)
 		if(m_Player[i] == NULL)
 			return i;
 	return -1;
 }
 
-
 bool TractorTable::OnAddGame(Player *player)
 {
 	if(player->status <= STATUS_AUDIENCE)
 	{
-		if(m_CurPlayerNum < m_PlayerNum)   //人数未满,成为玩家
+		if(m_PlayerNum < m_NeedNum)   //人数未满,成为玩家
 		{
 			player->status = STATUS_WAIT;
 			player->index = GetPlayerIndex();
 			assert(player->index != -1);
 			m_Player[player->index] = player;
-			++m_CurPlayerNum;
+			++m_PlayerNum;
 
 			//如果之前是旁观者,则删除
 			m_Audience.erase(player->client_id);
@@ -190,79 +190,24 @@ bool TractorTable::OnAddGame(Player *player)
 	char buffer[100];
 	snprintf(buffer, 100, "Player[uid=%d] add game", player->client_id);
 	string msg(buffer);
-	TableInfoBroadCast(msg);
+	SendAddGameRsp(player->fd, msg);
+	AddGameBroadCast(player);
+
 	return true;
-
-	/*
-	ProtocolContext *send_context = NULL;
-	send_context = m_GameRoom->NewProtocolContext();
-	assert(send_context != NULL);
-	send_context->type = DTYPE_BIN;
-	send_context->Info = "AddGameRsp";
-
-	KVData send_kvdata(true);
-	send_kvdata.SetValue(KEY_Protocol, (int)AddGameRsp);
-	string WelcomeMsg="Welcome:"+player->client_name;
-	send_kvdata.SetValue(KEY_WelcomeMsg, WelcomeMsg);
-	send_kvdata.SetValue(KEY_PlayerNum, m_PlayerNum);
-	send_kvdata.SetValue(KEY_ClientNum, m_CurPlayerNum);
-	send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
-
-	IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
-	uint32_t header_size = protocol_factory->HeaderSize();
-	uint32_t body_size = send_kvdata.Size();
-	send_context->CheckSize(header_size+body_size);
-	send_kvdata.Serialize(send_context->Buffer+header_size);
-	send_context->Size = header_size+body_size;
-
-	//设置NumArray
-	int size_array = sizeof(int)*2*(m_CurPlayerNum+m_Audience.size());
-	send_context->CheckSize(KVData::SizeBytes(size_array));
-
-	KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_NumArray, true);
-	int *num_array = (int*)kv_buf.second;
-	for(int i=0; i<m_PlayerNum; ++i)
-	{
-		if(m_Player[i] == NULL)
-			continue;
-		*num_array++ = htonl(m_Player[i]->client_id);
-		*num_array++ = htonl((int)m_Player[i]->status);
-	}
-	for(PPlayerMap::iterator it=m_Audience.begin(); it!=m_Audience.end(); ++it)
-	{
-		*num_array++ = htonl(it->second->client_id);
-		*num_array++ = htonl(it->second->status);
-	}
-
-	send_context->Size += KVData::EndWrite(kv_buf, size_array);
-
-	//编译头部
-	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-	if(m_GameRoom->SendProtocol(player->fd, send_context) == false)
-	{
-		LOG_ERROR(logger, "OnAddGame: send IntoTableRsp to framework failed.fd="<<player->fd);
-		m_GameRoom->DeleteProtocolContext(send_context);
-		return false;
-	}
-	LOG_DEBUG(logger, "OnAddGame: send AddGameRsp to framework succ.ClientName="<<player->client_name<<",ClientID="<<player->client_id<<",fd="<<player->fd);
-	return true;
-	*/
 }
 
 bool TractorTable::OnQuitGame(Player *player)
 {
-	char buffer[100];
 	if(player->status == STATUS_AUDIENCE)
 	{
 		m_Audience.erase(player->client_id);
-		snprintf(buffer, 100, "Audience[uid=%d] leave table", player->client_id);
 	}
 	else
 	{
 		m_Player[player->index] = NULL;
-		--m_CurPlayerNum;
+		--m_PlayerNum;
 		//其他玩家设置为STATUS_WAIT状态
-		for(int i=0; i<m_PlayerNum; ++i)
+		for(int i=0; i<m_NeedNum; ++i)
 		{
 			if(m_Player[i] != NULL)
 			{
@@ -270,11 +215,9 @@ bool TractorTable::OnQuitGame(Player *player)
 				m_Player[i]->poker.clear();
 			}
 		}
-		snprintf(buffer, 100, "Player[uid=%d] leave table", player->client_id);
 	}
 
-	string msg(buffer);
-	TableInfoBroadCast(msg);
+	QuitGameBroadCast(player);
 
 	return true;
 }
@@ -284,27 +227,24 @@ bool TractorTable::OnStartGame(Player *player)
 	assert(player->table_id==m_TableID && m_Player[player->index]==player && player->status==STATUS_WAIT);
 	player->status = STATUS_PLAYING;
 
-
-	char buffer[100];
-	snprintf(buffer, 100, "Player[uid=%d] start game.", player->client_id);
-	string msg(buffer);
-	TableInfoBroadCast(msg);
+	StartGameBroadCast(player);
 
 	//判断所有的玩家是否都是PLAYING状态
 	int i;
-	for(i=0; i<m_PlayerNum; ++i)
+	for(i=0; i<m_NeedNum; ++i)
 	{
 		if(m_Player[i]==NULL || m_Player[i]->status!=STATUS_PLAYING)
 			break;
 	}
 
 	//所有玩家都进入PLAYING状态,开始发牌
-	if(i >= m_PlayerNum)
+	if(i >= m_NeedNum)
 	{
 		//所有玩家先清牌
-		for(i=0; i<m_PlayerNum; ++i)
+		for(i=0; i<m_NeedNum; ++i)
 			m_Player[i]->poker.clear();
 
+		m_PokerNum = 0;
 		m_Poker.Shuffle();
 		//启动时钟开始发牌
 		IEventServer *event_server = m_GameRoom->GetEventServer();
@@ -319,75 +259,227 @@ bool TractorTable::OnStartGame(Player *player)
 	return true;
 }
 
-void TractorTable::TableInfoBroadCast(string &msg)
+void TractorTable::SendAddGameRsp(int fd, string &msg)
 {
-	LOG_DEBUG(logger, "TableInfoBroadCast");
+	LOG_DEBUG(logger, "SendAddGameRsp");
 
-	int index;
-	vector<int> fd_array;
-	for(index=0; index<m_PlayerNum; ++index)
+	KVData send_kvdata(true);
+	send_kvdata.SetValue(KEY_Protocol, (int)PRO_AddGameRsp);
+	send_kvdata.SetValue(KEY_Message, msg);
+	send_kvdata.SetValue(KEY_CurLevel, m_CulLevel);
+	send_kvdata.SetValue(KEY_CurColor, m_CulColor);
+	send_kvdata.SetValue(KEY_CurDealer, m_Dealer);
+	send_kvdata.SetValue(KEY_PokerNum, m_PokerNum);
+	send_kvdata.SetValue(KEY_PlayerNum, m_PlayerNum);
+	send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
+	send_kvdata.SetValue(KEY_ScoreNum, (int)m_Score.size());
+
+	IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
+	uint32_t header_size = protocol_factory->HeaderSize();
+	uint32_t body_size = send_kvdata.Size();
+
+	ProtocolContext *send_context = m_GameRoom->NewProtocolContext();
+	assert(send_context != NULL);
+	send_context->type = DTYPE_BIN;
+	send_context->Info = "AddGameRsp";
+
+	send_context->CheckSize(header_size+body_size);
+	send_kvdata.Serialize(send_context->Buffer+header_size);
+	send_context->Size = header_size+body_size;
+
+	//设置Array
+	int size_array = sizeof(int)*2*(m_PlayerNum+m_Audience.size());
+	send_context->CheckSize(KVData::SizeBytes(size_array));
+
+	KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_Array, true);
+	int *num_array = (int*)kv_buf.second;
+	for(int i=0; i<m_NeedNum; ++i)
 	{
-		if(m_Player[index] == NULL)
+		if(m_Player[i] == NULL)
 			continue;
-		fd_array.push_back(m_Player[index]->fd);
+		*num_array++ = htonl(m_Player[i]->client_id);
+		*num_array++ = htonl((int)m_Player[i]->status);
+	}
+	for(PPlayerMap::iterator it=m_Audience.begin(); it!=m_Audience.end(); ++it)
+	{
+		*num_array++ = htonl(it->second->client_id);
+		*num_array++ = htonl(it->second->status);
+	}
+	send_context->Size += KVData::EndWrite(kv_buf, size_array);
+
+	//设置ScoreArray
+	if(m_Score.size() > 0)
+	{
+		int size_array = sizeof(int)*m_Score.size();
+		send_context->CheckSize(KVData::SizeBytes(size_array));
+
+		KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_ScoreArray, true);
+		int *num_array = (int*)kv_buf.second;
+		for(int i=0; i<m_Score.size(); ++i)
+			*num_array++ = htonl(m_Score[i]);
+		send_context->Size += KVData::EndWrite(kv_buf, size_array);
+	}
+
+	//编译头部
+	protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+	if(m_GameRoom->SendProtocol(fd, send_context) == false)
+	{
+		LOG_ERROR(logger, "SendAddGameRsp: send SendAddGameRsp to framework failed.fd="<<fd);
+		m_GameRoom->DeleteProtocolContext(send_context);
+	}
+	else
+	{
+		LOG_DEBUG(logger, "SendAddGameRsp: send SendAddGameRsp to framework succ.fd="<<fd);
+	}
+}
+
+void TractorTable::AddGameBroadCast(Player *player)
+{
+	//获取桌子中,除player的所有其他人
+	vector<int> fd_vector;
+	for(int i=0; i<m_NeedNum; ++i)
+	{
+		if(m_Player[i]!=NULL && m_Player[i] != player)
+			fd_vector.push_back(m_Player[i]->fd);
 	}
 	PPlayerMap::iterator it;
 	for(it=m_Audience.begin(); it!=m_Audience.end(); ++it)
-		fd_array.push_back(it->second->fd);
-
-	for(index=0; index< fd_array.size(); ++index)
 	{
-		ProtocolContext *send_context = NULL;
-		send_context = m_GameRoom->NewProtocolContext();
-		assert(send_context != NULL);
-		send_context->type = DTYPE_BIN;
-		send_context->Info = "TableInfoBroadCast";
+		if(it->second != player)
+			fd_vector.push_back(it->second->fd);
+	}
 
-		KVData send_kvdata(true);
-		send_kvdata.SetValue(KEY_Protocol, (int)PRO_TableInfoBroadCast);
-		send_kvdata.SetValue(KEY_Message, msg);
-		send_kvdata.SetValue(KEY_NeedNum, m_PlayerNum);
-		send_kvdata.SetValue(KEY_PlayerNum, m_CurPlayerNum);
-		send_kvdata.SetValue(KEY_AudienceNum, (int)m_Audience.size());
+	KVData send_kvdata(true);
+	for(int i=0; i<fd_vector.size(); ++i)
+	{
+		send_kvdata.Clear();
+		send_kvdata.SetValue(KEY_Protocol, (int)PRO_AddGameBroadCast);
+		send_kvdata.SetValue(KEY_ClientID, player->client_id);
+		send_kvdata.SetValue(KEY_ClientName, player->client_name);
+		send_kvdata.SetValue(KEY_PosIndex, player->index);
 
 		IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
 		uint32_t header_size = protocol_factory->HeaderSize();
 		uint32_t body_size = send_kvdata.Size();
+
+		ProtocolContext *send_context = m_GameRoom->NewProtocolContext();
+		assert(send_context != NULL);
+		send_context->type = DTYPE_BIN;
+		send_context->Info = "AddGameBroadCast";
+
 		send_context->CheckSize(header_size+body_size);
 		send_kvdata.Serialize(send_context->Buffer+header_size);
 		send_context->Size = header_size+body_size;
 
-		//设置NumArray
-		int size_array = sizeof(int)*2*(m_CurPlayerNum+m_Audience.size());
-		send_context->CheckSize(KVData::SizeBytes(size_array));
-
-		KVBuffer kv_buf = KVData::BeginWrite(send_context->Buffer+send_context->Size, KEY_Array, true);
-		int *num_array = (int*)kv_buf.second;
-		for(int i=0; i<m_PlayerNum; ++i)
-		{
-			if(m_Player[i] == NULL)
-				continue;
-			*num_array++ = htonl(m_Player[i]->client_id);
-			*num_array++ = htonl((int)m_Player[i]->status);
-		}
-		for(PPlayerMap::iterator it=m_Audience.begin(); it!=m_Audience.end(); ++it)
-		{
-			*num_array++ = htonl(it->second->client_id);
-			*num_array++ = htonl(it->second->status);
-		}
-
-		send_context->Size += KVData::EndWrite(kv_buf, size_array);
-
-		//编译头部
 		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
-		if(m_GameRoom->SendProtocol(fd_array[index], send_context) == false)
+		if(m_GameRoom->SendProtocol(fd_vector[i], send_context) == false)
 		{
-			LOG_ERROR(logger, "TableInfoBroadCast: send TableInfoBroadCast to framework failed.fd="<<fd_array[index]);
+			LOG_ERROR(logger, "AddGameBroadCast: send AddGameBroadCast to framework failed.fd="<<fd_vector[i]);
 			m_GameRoom->DeleteProtocolContext(send_context);
 		}
 		else
 		{
-			LOG_DEBUG(logger, "TableInfoBroadCast: send TableInfoBroadCast to framework succ.fd="<<fd_array[index]);
+			LOG_DEBUG(logger, "AddGameBroadCast: send AddGameBroadCast to framework succ.fd="<<fd_vector[i]);
+		}
+	}
+}
+
+void TractorTable::QuitGameBroadCast(Player *player)
+{
+	//获取桌子中,除player的所有其他人
+	vector<int> fd_vector;
+	for(int i=0; i<m_NeedNum; ++i)
+	{
+		if(m_Player[i]!=NULL && m_Player[i] != player)
+			fd_vector.push_back(m_Player[i]->fd);
+	}
+	PPlayerMap::iterator it;
+	for(it=m_Audience.begin(); it!=m_Audience.end(); ++it)
+	{
+		if(it->second != player)
+			fd_vector.push_back(it->second->fd);
+	}
+
+	KVData send_kvdata(true);
+	for(int i=0; i<fd_vector.size(); ++i)
+	{
+		send_kvdata.Clear();
+		send_kvdata.SetValue(KEY_Protocol, (int)PRO_QuitGameBroadCast);
+		send_kvdata.SetValue(KEY_ClientID, player->client_id);
+		send_kvdata.SetValue(KEY_ClientName, player->client_name);
+
+		IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
+		uint32_t header_size = protocol_factory->HeaderSize();
+		uint32_t body_size = send_kvdata.Size();
+
+		ProtocolContext *send_context = m_GameRoom->NewProtocolContext();
+		assert(send_context != NULL);
+		send_context->type = DTYPE_BIN;
+		send_context->Info = "QuitGameBroadCast";
+
+		send_context->CheckSize(header_size+body_size);
+		send_kvdata.Serialize(send_context->Buffer+header_size);
+		send_context->Size = header_size+body_size;
+
+		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+		if(m_GameRoom->SendProtocol(fd_vector[i], send_context) == false)
+		{
+			LOG_ERROR(logger, "QuitGameBroadCast: send QuitGameBroadCast to framework failed.fd="<<fd_vector[i]);
+			m_GameRoom->DeleteProtocolContext(send_context);
+		}
+		else
+		{
+			LOG_DEBUG(logger, "QuitGameBroadCast: send QuitGameBroadCast to framework succ.fd="<<fd_vector[i]);
+		}
+	}
+}
+
+void TractorTable::StartGameBroadCast(Player *player)
+{
+	//获取桌子中,除player的所有其他人
+	vector<int> fd_vector;
+	for(int i=0; i<m_NeedNum; ++i)
+	{
+		if(m_Player[i]!=NULL && m_Player[i] != player)
+			fd_vector.push_back(m_Player[i]->fd);
+	}
+	PPlayerMap::iterator it;
+	for(it=m_Audience.begin(); it!=m_Audience.end(); ++it)
+	{
+		if(it->second != player)
+			fd_vector.push_back(it->second->fd);
+	}
+
+	KVData send_kvdata(true);
+	for(int i=0; i<fd_vector.size(); ++i)
+	{
+		send_kvdata.Clear();
+		send_kvdata.SetValue(KEY_Protocol, (int)PRO_StartGameBroadCast);
+		send_kvdata.SetValue(KEY_ClientID, player->client_id);
+		send_kvdata.SetValue(KEY_ClientName, player->client_name);
+
+		IProtocolFactory *protocol_factory = m_GameRoom->GetProtocolFactory();
+		uint32_t header_size = protocol_factory->HeaderSize();
+		uint32_t body_size = send_kvdata.Size();
+
+		ProtocolContext *send_context = m_GameRoom->NewProtocolContext();
+		assert(send_context != NULL);
+		send_context->type = DTYPE_BIN;
+		send_context->Info = "StartGameBroadCast";
+
+		send_context->CheckSize(header_size+body_size);
+		send_kvdata.Serialize(send_context->Buffer+header_size);
+		send_context->Size = header_size+body_size;
+
+		protocol_factory->EncodeHeader(send_context->Buffer, send_context->Size-header_size);
+		if(m_GameRoom->SendProtocol(fd_vector[i], send_context) == false)
+		{
+			LOG_ERROR(logger, "StartGameBroadCast: send StartGameBroadCast to framework failed.fd="<<fd_vector[i]);
+			m_GameRoom->DeleteProtocolContext(send_context);
+		}
+		else
+		{
+			LOG_DEBUG(logger, "StartGameBroadCast: send StartGameBroadCast to framework succ.fd="<<fd_vector[i]);
 		}
 	}
 }

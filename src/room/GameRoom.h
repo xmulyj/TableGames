@@ -89,7 +89,7 @@ private:
 	int    m_ID;
 	int    m_TableNum;
 	int    m_PackNum;
-	int    m_PlayerNum;  //一次几个玩家
+	int    m_NeedNum;  //一次几个玩家
 	PlayerMap m_PlayerMap;
 	map<int, int> m_FDClientMap;
 	set<int>      m_ClientSet;
@@ -103,6 +103,7 @@ private:
 	void OnAbortQuitGame(Player &player);  //意外退出游戏
 
 	void RoomInfoBroadCast();
+	void SendRoomInfo(int fd);
 private:
 	DECL_LOGGER(logger);
 };
