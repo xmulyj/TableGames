@@ -74,7 +74,7 @@ public:
 	int GetPlayerArray()
 	{
 		int bitmap = 0;
-		for(int i=0; i<m_PlayerNum; ++i)
+		for(int i=0; i<m_NeedNum; ++i)
 			if(m_Player[i] != NULL)
 				bitmap |= (1<<i);
 		return bitmap;

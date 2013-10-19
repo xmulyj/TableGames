@@ -81,7 +81,7 @@ int32_t GameRoom::GetSocketRecvTimeout()
 
 int32_t GameRoom::GetSocketIdleTimeout()
 {
-	return 120000;
+	return 720000;
 }
 
 int32_t GameRoom::GetMaxConnections()
@@ -471,7 +471,9 @@ bool GameRoom::OnAddGame(int fd, KVData *kvdata)
 	Player *player = &it->second;
 	assert(player->table_id == TableID);
 	bool ret = m_Tables[TableID].OnAddGame(player);
-	RoomInfoBroadCast();
+
+	if(player->status > STATUS_AUDIENCE)
+		RoomInfoBroadCast();
 	return ret;
 }
 
