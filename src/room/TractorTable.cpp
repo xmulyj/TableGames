@@ -26,6 +26,7 @@ TractorTable::TractorTable(GameRoom *game_room, int table_id, int n_poker/*=1*/,
 		m_Player[i] = NULL;
 	m_PlayerNum = 0;
 	m_Dealer = 0;
+	m_PokerNum = 0;
 
 	if(n_poker%2 == 1)
 		m_KeepPokerNum = 6;
